@@ -1,0 +1,142 @@
+{
+  "project_name": "FieldCollector",
+  "app_type": "hybrid_fullstack",
+  "archetype": "ARCHETYPE_2_SWISS_TACTICAL_PERFORMANCE",
+  "description": "Enterprise Field Operations & Asset Recovery Management System (Surat Kuasa, Data Unit, Penugasan, Surat Tugas A4 Print + QR Code, Petugas Mobile PWA Workflow + Camera & Leaflet GPS, Public Verification)",
+  "language": "id-ID",
+  "color_palette": {
+    "primary_navy": "#0F172A",
+    "primary_blue": "#1E3A8A",
+    "accent_blue": "#2563EB",
+    "background_light": "#F8FAFC",
+    "card_white": "#FFFFFF",
+    "text_main": "#0F172A",
+    "text_muted": "#64748B",
+    "border_subtle": "#E2E8F0",
+    "status_success": "#10B981",
+    "status_warning": "#F59E0B",
+    "status_danger": "#EF4444",
+    "status_info": "#0EA5E9",
+    "status_neutral": "#64748B"
+  },
+  "typography": {
+    "font_family_heading": "Outfit, Plus Jakarta Sans, sans-serif",
+    "font_family_body": "Inter, DM Sans, sans-serif",
+    "font_family_mono": "JetBrains Mono, monospace",
+    "scale": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "h4": "text-lg font-semibold",
+      "body": "text-sm sm:text-base leading-relaxed",
+      "caption": "text-xs text-slate-500 uppercase tracking-wider font-mono"
+    }
+  },
+  "layout_strategies": {
+    "admin_dashboard": {
+      "container": "min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans",
+      "sidebar": "w-64 bg-slate-900 text-slate-100 flex-shrink-0 flex flex-col justify-between border-r border-slate-800 shadow-xl z-30",
+      "topbar": "h-16 bg-white/90 backdrop-blur-md border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-20 shadow-sm",
+      "main_content": "flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6",
+      "grid_bento": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6"
+    },
+    "petugas_mobile": {
+      "container": "min-h-screen bg-slate-100 flex justify-center items-start py-0 sm:py-6 font-sans",
+      "frame": "w-full max-w-[430px] min-h-screen sm:min-h-[844px] sm:max-h-[900px] bg-white sm:rounded-[36px] sm:shadow-2xl overflow-hidden flex flex-col relative sm:border-[8px] sm:border-slate-800",
+      "top_header": "bg-slate-900 text-white px-5 pt-4 pb-5 rounded-b-2xl shadow-md sticky top-0 z-30 flex items-center justify-between",
+      "content_area": "flex-1 overflow-y-auto px-4 py-5 space-y-4 pb-24",
+      "bottom_nav": "fixed sm:absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-2 flex justify-around items-center z-40 shadow-lg"
+    },
+    "print_a4": {
+      "page": "w-[210mm] min-h-[297mm] bg-white p-10 text-slate-900 mx-auto shadow-2xl border border-slate-300 font-serif print:shadow-none print:border-none print:p-0 print:w-full print:m-0"
+    }
+  },
+  "component_rules": {
+    "cards": "bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 p-5",
+    "stat_cards": "bg-white rounded-2xl border border-slate-200 p-5 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-blue-500/50 transition-all",
+    "buttons": {
+      "primary": "bg-slate-900 hover:bg-slate-800 text-white font-medium px-4 py-2.5 rounded-xl shadow-sm hover:shadow active:scale-[0.98] transition-all flex items-center justify-center gap-2",
+      "accent": "bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2.5 rounded-xl shadow-sm hover:shadow active:scale-[0.98] transition-all flex items-center justify-center gap-2",
+      "mobile_action": "w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-2xl shadow-lg active:scale-[0.98] transition-all text-center text-base flex items-center justify-center gap-2"
+    },
+    "status_badges": {
+      "tercapai": "bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5",
+      "proses": "bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5",
+      "gagal": "bg-rose-100 text-rose-800 border border-rose-200 px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5",
+      "pending": "bg-slate-100 text-slate-800 border border-slate-200 px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5"
+    },
+    "tables": "w-full text-left border-collapse text-sm rounded-xl overflow-hidden bg-white shadow-sm border border-slate-200"
+  },
+  "key_features_and_views": [
+    "Role Switcher (Admin Dashboard / Petugas Mobile View / Public Verification)",
+    "Admin - Dashboard Analytics Cards & 7-Day Performance Bar/Line Chart",
+    "Admin - Klien CRUD (Bank, Finance, Leasing)",
+    "Admin - Surat Kuasa Management & Multi-Unit Attachment",
+    "Admin - Data Akun/Unit Table with Filter, Search, Pagination & Checkbox Bulk Assign",
+    "Admin - Penugasan Form & Officer Workload Distribution",
+    "Admin - Surat Tugas Generator with A4 Print & Dynamic QR Code Link",
+    "Admin - Laporan Petugas Table, Map Location Detail & Evidence Photo Gallery",
+    "Admin - Petugas Management & System Settings",
+    "Petugas - Mobile Home Dashboard (Daily Target, Task Stats & Active Tasks)",
+    "Petugas - Detail Tugas View (Unit Specs, Borrower Contact, Address, Map)",
+    "Petugas - 3-Step Report Submission Workflow (Outcome -> Camera Photo Evidence -> GPS Location Verification -> Review & Submit)",
+    "Petugas - Task History & Profile",
+    "Public - Surat Tugas QR Code Verification Page (/verifikasi/:id)",
+    "Interactive Leaflet/OpenStreetMap Map Component for Visit Locations",
+    "Offline/PWA status indicators & quick actions"
+  ],
+  "image_urls": [
+    {
+      "category": "hero_vehicle_inspection",
+      "url": "https://images.unsplash.com/photo-1788055649959-8d88e8cbc01f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHw0fHxmaWVsZCUyMG9mZmljZXIlMjBpbnNwZWN0aW5nJTIwY2FyJTIwbW90b3JjeWNsZSUyMHNlY3VyaXR5JTIwcmVjb3Zlcnl8ZW58MHx8fHwxNzkxMjYwMzA3fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Officer inspecting vehicle condition in field"
+    },
+    {
+      "category": "officer_motorcycle",
+      "url": "https://images.unsplash.com/photo-1637306352747-8ce70a8bcf75?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwxfHxpbmRvbmVzaWFuJTIwb2ZmaWNlciUyMGF2YXRhciUyMHBvcnRyYWl0JTIwdmVoaWNsZSUyMGNhciUyMG1vdG9yY3ljbGV8ZW58MHx8fHwxNzkxMjYwMzE0fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Field Officer on motorcycle assignment"
+    },
+    {
+      "category": "officer_avatar_1",
+      "url": "https://images.unsplash.com/photo-1734489945697-5adf14bd88f3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHw0fHxpbmRvbmVzaWFuJTIwb2ZmaWNlciUyMGF2YXRhciUyMHBvcnRyYWl0JTIwdmVoaWNsZSUyMGNhciUyMG1vdG9yY3ljbGV8ZW58MHx8fHwxNzkxMjYwMzE0fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Officer profile photo 1"
+    },
+    {
+      "category": "officer_avatar_2",
+      "url": "https://images.unsplash.com/photo-1676452195340-5a6d68796844?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwzfHxpbmRvbmVzaWFuJTIwb2ZmaWNlciUyMGF2YXRhciUyMHBvcnRyYWl0JTIwdmVoaWNsZSUyMGNhciUyMG1vdG9yY3ljbGV8ZW58MHx8fHwxNzkxMjYwMzE0fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Officer profile photo 2"
+    }
+  ],
+  "testing_guidelines": {
+    "data_testid_convention": "kebab-case",
+    "examples": [
+      "data-testid=\"role-switcher-select\"",
+      "data-testid=\"admin-sidebar-dashboard-link\"",
+      "data-testid=\"admin-sidebar-surat-kuasa-link\"",
+      "data-testid=\"admin-sidebar-akun-unit-link\"",
+      "data-testid=\"admin-sidebar-penugasan-link\"",
+      "data-testid=\"admin-sidebar-surat-tugas-link\"",
+      "data-testid=\"admin-sidebar-laporan-link\"",
+      "data-testid=\"admin-add-klien-button\"",
+      "data-testid=\"admin-add-surat-kuasa-button\"",
+      "data-testid=\"admin-add-penugasan-button\"",
+      "data-testid=\"admin-print-surat-tugas-button\"",
+      "data-testid=\"petugas-bottom-nav-beranda\"",
+      "data-testid=\"petugas-bottom-nav-tugas\"",
+      "data-testid=\"petugas-bottom-nav-riwayat\"",
+      "data-testid=\"petugas-bottom-nav-profil\"",
+      "data-testid=\"petugas-submit-report-button\"",
+      "data-testid=\"petugas-take-photo-button\"",
+      "data-testid=\"petugas-capture-gps-button\"",
+      "data-testid=\"public-verify-status-badge\""
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Ensure both Admin Desktop Layout and Petugas Mobile App view operate seamlessly and can be toggled via a top header role bar (Admin View vs Petugas View vs Public Verify).",
+    "Use clean Bahasa Indonesia terminology everywhere (Surat Kuasa, Penugasan, Surat Tugas, Laporan Petugas, Ditemukan, Tidak Ditemukan, DPD, Plat Nomor, Leasing, QR Code).",
+    "Implement interactive OpenStreetMap (Leaflet or custom vector map component) for viewing visit coordinates in Admin Laporan & Petugas Detail Tugas.",
+    "Support camera photo simulation/upload and live GPS geolocation capture in Petugas 3-step report workflow.",
+    "Include a dedicated Print A4 Surat Tugas layout with QR Code and legal authorization seal.",
+    "Make sure all interactive buttons and navigation items contain explicit data-testid attributes."
+  ]
+}
