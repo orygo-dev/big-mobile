@@ -7,16 +7,39 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const NAV = [
-  { to: "/admin", end: true, label: "Dashboard", icon: LayoutDashboard, tid: "admin-sidebar-dashboard-link" },
-  { to: "/admin/klien", label: "Klien", icon: Building2, tid: "admin-sidebar-klien-link" },
-  { to: "/admin/surat-kuasa", label: "Surat Kuasa", icon: FileText, tid: "admin-sidebar-surat-kuasa-link" },
-  { to: "/admin/akun", label: "Data Akun / Unit", icon: Car, tid: "admin-sidebar-akun-unit-link" },
-  { to: "/admin/penugasan", label: "Penugasan", icon: ClipboardList, tid: "admin-sidebar-penugasan-link" },
-  { to: "/admin/surat-tugas", label: "Surat Tugas", icon: FileCheck2, tid: "admin-sidebar-surat-tugas-link" },
-  { to: "/admin/laporan", label: "Laporan Petugas", icon: FileSearch, tid: "admin-sidebar-laporan-link" },
-  { to: "/admin/petugas", label: "Petugas", icon: Users, tid: "admin-sidebar-petugas-link" },
-  { to: "/admin/pengaturan", label: "Pengaturan", icon: Settings, tid: "admin-sidebar-pengaturan-link" },
+// Sidebar dikelompokkan sesuai information architecture baru.
+// Catatan: route tetap sama (non-destruktif). Item yang akan dibuat pada Fase 2
+// (Nasabah/Debitur, BASTK, Arsip Dokumen) belum ditambahkan agar tidak ada link rusak.
+const NAV_GROUPS = [
+  {
+    section: null, // Dashboard tampil tanpa header section
+    items: [
+      { to: "/admin", end: true, label: "Dashboard", icon: LayoutDashboard, tid: "admin-sidebar-dashboard-link" },
+    ],
+  },
+  {
+    section: "Master Data",
+    items: [
+      { to: "/admin/klien", label: "Pemberi Kuasa / Leasing", icon: Building2, tid: "admin-sidebar-klien-link" },
+      { to: "/admin/akun", label: "Kontrak & Unit", icon: Car, tid: "admin-sidebar-akun-unit-link" },
+      { to: "/admin/petugas", label: "Petugas", icon: Users, tid: "admin-sidebar-petugas-link" },
+    ],
+  },
+  {
+    section: "Operasional",
+    items: [
+      { to: "/admin/surat-kuasa", label: "Surat Kuasa", icon: FileText, tid: "admin-sidebar-surat-kuasa-link" },
+      { to: "/admin/penugasan", label: "Penugasan", icon: ClipboardList, tid: "admin-sidebar-penugasan-link" },
+      { to: "/admin/surat-tugas", label: "Surat Tugas", icon: FileCheck2, tid: "admin-sidebar-surat-tugas-link" },
+      { to: "/admin/laporan", label: "Laporan Lapangan", icon: FileSearch, tid: "admin-sidebar-laporan-link" },
+    ],
+  },
+  {
+    section: "Pengaturan",
+    items: [
+      { to: "/admin/pengaturan", label: "Pengaturan", icon: Settings, tid: "admin-sidebar-pengaturan-link" },
+    ],
+  },
 ];
 
 export default function AdminLayout() {
@@ -37,17 +60,26 @@ export default function AdminLayout() {
           <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider mt-1">Admin Panel</p>
         </div>
       </div>
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        {NAV.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.end} data-testid={n.tid} onClick={() => setOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`
-            }>
-            <n.icon className="w-[18px] h-[18px]" />
-            {n.label}
-          </NavLink>
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={gi} className="space-y-1">
+            {group.section && (
+              <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                {group.section}
+              </p>
+            )}
+            {group.items.map((n) => (
+              <NavLink key={n.to} to={n.to} end={n.end} data-testid={n.tid} onClick={() => setOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  }`
+                }>
+                <n.icon className="w-[18px] h-[18px]" />
+                {n.label}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
       <div className="p-3 border-t border-slate-800">

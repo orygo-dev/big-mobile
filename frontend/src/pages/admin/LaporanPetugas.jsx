@@ -35,7 +35,7 @@ export default function LaporanPetugas() {
   return (
     <div className="space-y-5 animate-fade-in">
       <div>
-        <h1 className="font-heading text-2xl font-bold text-slate-900">Laporan Petugas</h1>
+        <h1 className="font-heading text-2xl font-bold text-slate-900">Laporan Lapangan</h1>
         <p className="text-sm text-slate-500 mt-1">Hasil kunjungan lapangan dari petugas.</p>
       </div>
 

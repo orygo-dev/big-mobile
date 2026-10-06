@@ -53,11 +53,11 @@ export default function Klien() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-2xl font-bold text-slate-900">Klien</h1>
-          <p className="text-sm text-slate-500 mt-1">Kelola data perusahaan klien.</p>
+          <h1 className="font-heading text-2xl font-bold text-slate-900">Pemberi Kuasa / Leasing</h1>
+          <p className="text-sm text-slate-500 mt-1">Kelola data pemberi kuasa / perusahaan leasing.</p>
         </div>
         <Button onClick={openNew} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="admin-add-klien-button">
-          <Plus className="w-4 h-4 mr-1" /> Tambah Klien
+          <Plus className="w-4 h-4 mr-1" /> Tambah Pemberi Kuasa
         </Button>
       </div>
 

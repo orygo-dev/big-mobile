@@ -50,7 +50,7 @@ export default function AkunUnit() {
   return (
     <div className="space-y-5 animate-fade-in">
       <div>
-        <h1 className="font-heading text-2xl font-bold text-slate-900">Data Akun / Unit</h1>
+        <h1 className="font-heading text-2xl font-bold text-slate-900">Kontrak & Unit</h1>
         <p className="text-sm text-slate-500 mt-1">Pilih beberapa akun untuk membuat penugasan.</p>
       </div>
 

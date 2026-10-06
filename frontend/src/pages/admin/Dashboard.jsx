@@ -12,7 +12,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 
 const STAT_CONF = [
   { key: "surat_kuasa_aktif", label: "Surat Kuasa Aktif", icon: FileText, color: "text-blue-600", bg: "bg-blue-50" },
-  { key: "total_akun", label: "Total Akun / Unit", icon: Car, color: "text-indigo-600", bg: "bg-indigo-50" },
+  { key: "total_akun", label: "Total Kontrak & Unit", icon: Car, color: "text-indigo-600", bg: "bg-indigo-50" },
   { key: "tugas_aktif", label: "Tugas Aktif", icon: ClipboardCheck, color: "text-sky-600", bg: "bg-sky-50" },
   { key: "unit_ditemukan", label: "Unit Ditemukan", icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50" },
   { key: "unit_tidak_ditemukan", label: "Tidak Ditemukan", icon: XCircle, color: "text-rose-600", bg: "bg-rose-50" },
