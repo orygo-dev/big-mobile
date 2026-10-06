@@ -170,6 +170,7 @@ class AccountInput(BaseModel):
     warna: Optional[str] = ""
     nomor_rangka: Optional[str] = ""
     nomor_mesin: Optional[str] = ""
+    stnk_name: Optional[str] = ""
     client_id: str
     surat_kuasa_id: str
     keterangan: Optional[str] = ""
@@ -183,6 +184,22 @@ class PetugasInput(BaseModel):
     telepon: Optional[str] = ""
     tim: Optional[str] = ""
     status: str = "aktif"
+    nik: Optional[str] = ""
+    jabatan: Optional[str] = "PROFCOLL"
+    no_sertifikasi: Optional[str] = ""
+    sertifikasi_valid_until: Optional[str] = ""
+
+class CompanyInput(BaseModel):
+    nama: str
+    alamat: Optional[str] = ""
+    telepon: Optional[str] = ""
+    email: Optional[str] = ""
+    city: Optional[str] = ""
+    director_name: Optional[str] = ""
+    director_position: Optional[str] = "DIREKTUR"
+    company_code: Optional[str] = ""
+    number_format: Optional[str] = "{sequence}/{company_code}/{month_name}/{year}"
+    logo: Optional[str] = ""
 
 class PenugasanInput(BaseModel):
     petugas_id: str
@@ -469,6 +486,8 @@ async def create_petugas(data: PetugasInput, request: Request, user: dict = Depe
         "password_hash": hash_password(data.password or "petugas123"),
         "telepon": data.telepon, "tim": data.tim, "status": data.status,
         "petugas_code": f"PTG-{seq:05d}",
+        "nik": data.nik, "jabatan": data.jabatan,
+        "no_sertifikasi": data.no_sertifikasi, "sertifikasi_valid_until": data.sertifikasi_valid_until,
         "avatar": "", "created_at": now_iso(), "updated_at": now_iso(),
     }
     await db.users.insert_one(doc)
@@ -485,7 +504,9 @@ async def get_petugas(pid: str, user: dict = Depends(admin_required)):
 
 @api_router.put("/petugas/{pid}")
 async def update_petugas(pid: str, data: PetugasInput, request: Request, user: dict = Depends(admin_required)):
-    upd = {"name": data.name, "email": data.email.lower().strip(), "telepon": data.telepon, "tim": data.tim, "status": data.status, "updated_at": now_iso()}
+    upd = {"name": data.name, "email": data.email.lower().strip(), "telepon": data.telepon, "tim": data.tim, "status": data.status,
+           "nik": data.nik, "jabatan": data.jabatan, "no_sertifikasi": data.no_sertifikasi,
+           "sertifikasi_valid_until": data.sertifikasi_valid_until, "updated_at": now_iso()}
     if data.password:
         upd["password_hash"] = hash_password(data.password)
     res = await db.users.update_one({"id": pid, "company_id": user["company_id"], "role": "petugas"}, {"$set": upd})
@@ -551,6 +572,7 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
         "client_id": client_id, "surat_kuasa_id": sk_id,
         "account_ids": data.account_ids, "tanggal": data.tanggal_tugas or now_iso(),
         "masa_berlaku": data.masa_berlaku, "catatan": data.catatan, "status": "aktif",
+        "document_status": "DRAFT", "template_version": "v1",
         "created_at": now_iso(), "updated_at": now_iso(),
     }
     await db.assignment_letters.insert_one(letter)
@@ -598,7 +620,8 @@ async def surat_tugas_qr(lid: str):
     letter = await db.assignment_letters.find_one({"id": lid}, {"_id": 0})
     if not letter:
         raise HTTPException(status_code=404, detail="Surat Tugas tidak ditemukan")
-    verify_url = f"{APP_BASE_URL}/verifikasi/{lid}"
+    code = letter.get("generate_code")
+    verify_url = f"{APP_BASE_URL}/verify/surat-tugas/{code}" if code else f"{APP_BASE_URL}/verifikasi/{lid}"
     img = qrcode.make(verify_url)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -624,6 +647,170 @@ async def public_verify(lid: str):
         "tanggal_berlaku": letter.get("masa_berlaku") or letter.get("tanggal"),
         "status": letter["status"],
     }
+
+# ---------------------------------------------------------------------------
+# Surat Penugasan + BASTK document system (dynamic template, snapshot, verify)
+# ---------------------------------------------------------------------------
+ID_MONTHS_UP = ["", "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI",
+                "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
+MONTH_ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
+
+
+def int_to_roman(n: int) -> str:
+    vals = [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
+            (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+    res = ""
+    for v, s in vals:
+        while n >= v:
+            res += s
+            n -= v
+    return res
+
+
+def _date_only(iso):
+    return iso[:10] if iso else ""
+
+
+async def build_document_data(letter: dict, generated_by_name: str = "") -> dict:
+    company = await db.companies.find_one({"id": letter["company_id"]}, {"_id": 0}) or {}
+    officer = await db.users.find_one({"id": letter["petugas_id"]}, {"_id": 0, "password_hash": 0}) or {}
+    client_doc = await db.clients.find_one({"id": letter.get("client_id")}, {"_id": 0}) or {}
+    accs = await db.accounts.find({"id": {"$in": letter.get("account_ids", [])}}, {"_id": 0}).to_list(1000)
+    acc_list = [{
+        "contract_number": a.get("nomor_kontrak", ""),
+        "debtor_name": a.get("nama_debitur", ""),
+        "debtor_address": a.get("alamat", ""),
+        "debtor_phone": a.get("telepon", ""),
+        "debtor_nik": a.get("nik", ""),
+        "brand": ((a.get("merk", "") + " " + a.get("model", "")).strip()) or a.get("jenis_kendaraan", ""),
+        "jenis": a.get("jenis_kendaraan", ""),
+        "model": a.get("model", ""),
+        "year": a.get("tahun", ""),
+        "color": a.get("warna", ""),
+        "license_plate": a.get("nomor_polisi", ""),
+        "chassis_number": a.get("nomor_rangka", ""),
+        "engine_number": a.get("nomor_mesin", ""),
+        "stnk_name": a.get("stnk_name", "") or a.get("nama_debitur", ""),
+    } for a in accs]
+    return {
+        "company": {
+            "name": company.get("nama", ""), "city": company.get("city", ""),
+            "address": company.get("alamat", ""), "phone": company.get("telepon", ""),
+            "director_name": company.get("director_name", ""),
+            "director_position": company.get("director_position", "DIREKTUR"),
+            "company_code": company.get("company_code", ""), "logo": company.get("logo", ""),
+        },
+        "finance": {"name": client_doc.get("nama_perusahaan", "")},
+        "officer": {
+            "name": officer.get("name", ""), "nik": officer.get("nik", ""),
+            "position": officer.get("jabatan", "PROFCOLL"), "code": officer.get("petugas_code", ""),
+            "certification_number": officer.get("no_sertifikasi", ""),
+            "certification_valid_until": officer.get("sertifikasi_valid_until", ""),
+            "phone": officer.get("telepon", ""),
+        },
+        "letter": {
+            "document_number": letter.get("document_number", ""),
+            "generate_code": letter.get("generate_code", ""),
+            "register_number": letter.get("register_number", ""),
+            "issue_date": letter.get("issue_date") or _date_only(letter.get("tanggal")),
+            "valid_from": _date_only(letter.get("tanggal")),
+            "valid_until": _date_only(letter.get("masa_berlaku")),
+            "status": letter.get("status", ""),
+        },
+        "accounts": acc_list,
+        "generated_by": generated_by_name or letter.get("generated_by", ""),
+        "generated_at": letter.get("generated_at") or now_iso(),
+    }
+
+
+async def get_document_payload(letter: dict) -> dict:
+    template = await db.document_templates.find_one(
+        {"company_id": letter["company_id"], "version": letter.get("template_version", "v1")}, {"_id": 0})
+    if not template:
+        template = await db.document_templates.find_one({"version": "v1"}, {"_id": 0})
+    if letter.get("document_status") == "ACTIVE" and letter.get("document_snapshot"):
+        data = letter["document_snapshot"]
+    else:
+        data = await build_document_data(letter)
+    return {
+        "document_status": letter.get("document_status", "DRAFT"),
+        "is_finalized": letter.get("document_status") == "ACTIVE",
+        "template": template, "data": data,
+        "letter_id": letter["id"], "st_nomor": letter.get("nomor"),
+        "letter_status": letter.get("status"),
+    }
+
+
+@api_router.get("/surat-tugas/{lid}/document")
+async def get_document(lid: str, user: dict = Depends(admin_required)):
+    letter = await db.assignment_letters.find_one({"id": lid, "company_id": user["company_id"]}, {"_id": 0})
+    if not letter:
+        raise HTTPException(status_code=404, detail="Surat Tugas tidak ditemukan")
+    return await get_document_payload(letter)
+
+
+@api_router.post("/surat-tugas/{lid}/finalize")
+async def finalize_document(lid: str, request: Request, user: dict = Depends(admin_required)):
+    letter = await db.assignment_letters.find_one({"id": lid, "company_id": user["company_id"]})
+    if not letter:
+        raise HTTPException(status_code=404, detail="Surat Tugas tidak ditemukan")
+    if letter.get("document_status") == "ACTIVE":
+        letter.pop("_id", None)
+        return await get_document_payload(letter)
+    if letter.get("status") != "aktif":
+        raise HTTPException(status_code=400, detail="Surat Tugas tidak aktif, tidak dapat difinalisasi")
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0}) or {}
+    now = datetime.now(timezone.utc)
+    year = now.year
+    seq = await next_sequence(f"docnum_{user['company_id']}_{year}")
+    fmt = company.get("number_format") or "{sequence}/{company_code}/{month_name}/{year}"
+    document_number = fmt.format(sequence=f"{seq:04d}", company_code=company.get("company_code", ""),
+                                 month_name=ID_MONTHS_UP[now.month], year=year)
+    generate_code = f"GNR-{year}-{uuid.uuid4().hex[:20].upper()}"
+    reg_seq = await next_sequence(f"bastk_{user['company_id']}_{year}")
+    register_number = f"{reg_seq}/{int_to_roman(year)}/{MONTH_ROMAN[now.month]}"
+    upd = {
+        "document_number": document_number, "generate_code": generate_code,
+        "register_number": register_number, "issue_date": now.date().isoformat(),
+        "document_status": "ACTIVE", "template_version": "v1",
+        "generated_by": user["name"], "generated_at": now_iso(), "updated_at": now_iso(),
+    }
+    letter.update(upd)
+    snapshot = await build_document_data(letter, user["name"])
+    upd["document_snapshot"] = snapshot
+    await db.assignment_letters.update_one({"id": lid}, {"$set": upd})
+    await log_audit(user, "Finalisasi Surat Penugasan", "assignment_letter", lid, request)
+    letter = await db.assignment_letters.find_one({"id": lid}, {"_id": 0})
+    return await get_document_payload(letter)
+
+
+@api_router.get("/public/verify/{code}")
+async def public_verify_code(code: str):
+    letter = await db.assignment_letters.find_one({"generate_code": code}, {"_id": 0})
+    if not letter:
+        return {"valid": False, "doc_status": "TIDAK DITEMUKAN", "message": "Dokumen tidak ditemukan"}
+    company = await db.companies.find_one({"id": letter["company_id"]}, {"_id": 0}) or {}
+    officer = await db.users.find_one({"id": letter["petugas_id"]}, {"_id": 0, "password_hash": 0}) or {}
+    st = letter.get("status")
+    status_map = {"aktif": "VALID", "selesai": "VALID", "dibatalkan": "DIBATALKAN", "kedaluwarsa": "KEDALUWARSA"}
+    return {
+        "valid": st in ("aktif", "selesai"),
+        "doc_status": status_map.get(st, "TIDAK VALID"),
+        "nomor": letter.get("document_number") or letter.get("nomor"),
+        "company_name": company.get("nama", ""),
+        "petugas_name": officer.get("name", ""),
+        "issued_at": letter.get("generated_at"),
+        "valid_until": _date_only(letter.get("masa_berlaku")),
+        "generate_code": code,
+    }
+
+
+@api_router.put("/company")
+async def update_company(data: CompanyInput, request: Request, user: dict = Depends(admin_required)):
+    await db.companies.update_one({"id": user["company_id"]}, {"$set": {**data.model_dump(), "updated_at": now_iso()}})
+    await log_audit(user, "Mengubah profil perusahaan", "company", user["company_id"], request)
+    return await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
+
 
 # ---------------------------------------------------------------------------
 # Petugas (field officer) views

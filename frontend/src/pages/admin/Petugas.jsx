@@ -9,7 +9,7 @@ import EmptyState from "@/components/EmptyState";
 import { Users, Plus, Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-const EMPTY = { name: "", email: "", password: "", telepon: "", tim: "", status: "aktif" };
+const EMPTY = { name: "", email: "", password: "", telepon: "", tim: "", status: "aktif", nik: "", jabatan: "PROFCOLL", no_sertifikasi: "", sertifikasi_valid_until: "" };
 
 export default function Petugas() {
   const [items, setItems] = useState([]);
@@ -95,6 +95,14 @@ export default function Petugas() {
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Telepon</Label><Input value={form.telepon} onChange={set("telepon")} className="mt-1.5 rounded-xl" /></div>
               <div><Label>Tim / Area</Label><Input value={form.tim} onChange={set("tim")} className="mt-1.5 rounded-xl" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>NIK</Label><Input value={form.nik} onChange={set("nik")} className="mt-1.5 rounded-xl" data-testid="petugas-nik-input" /></div>
+              <div><Label>Jabatan</Label><Input value={form.jabatan} onChange={set("jabatan")} className="mt-1.5 rounded-xl" data-testid="petugas-jabatan-input" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>No. Sertifikasi</Label><Input value={form.no_sertifikasi} onChange={set("no_sertifikasi")} className="mt-1.5 rounded-xl" data-testid="petugas-sertifikasi-input" /></div>
+              <div><Label>Sertifikasi s.d.</Label><Input type="date" value={form.sertifikasi_valid_until || ""} onChange={set("sertifikasi_valid_until")} className="mt-1.5 rounded-xl" data-testid="petugas-sertifikasi-date" /></div>
             </div>
             <div><Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>

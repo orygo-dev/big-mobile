@@ -10,7 +10,7 @@ import EmptyState from "@/components/EmptyState";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { FileCheck2, Loader2, Search, Printer, MoreVertical, QrCode } from "lucide-react";
+import { FileCheck2, Loader2, Search, Printer, MoreVertical, QrCode, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SuratTugas() {
@@ -82,7 +82,10 @@ export default function SuratTugas() {
                     <td className="px-3 py-3 text-slate-500">{formatDate(l.tanggal)}</td>
                     <td className="px-3 py-3"><StatusBadge map={LETTER_STATUS} value={l.status} /></td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => navigate(`/admin/surat-tugas/${l.id}/print`)} className="text-slate-500 hover:text-blue-600 p-1.5" title="Cetak" data-testid={`st-print-${l.id}`}>
+                      <button onClick={() => navigate(`/admin/surat-tugas/${l.id}/dokumen`)} className="text-slate-500 hover:text-blue-600 p-1.5" title="Dokumen Surat Penugasan" data-testid={`st-doc-${l.id}`}>
+                        <FileText className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => navigate(`/admin/surat-tugas/${l.id}/print`)} className="text-slate-500 hover:text-blue-600 p-1.5" title="Cetak ringkas" data-testid={`st-print-${l.id}`}>
                         <Printer className="w-4 h-4" />
                       </button>
                       <DropdownMenu>
@@ -90,8 +93,9 @@ export default function SuratTugas() {
                           <button className="text-slate-500 hover:text-slate-800 p-1.5" data-testid={`st-menu-${l.id}`}><MoreVertical className="w-4 h-4" /></button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => navigate(`/admin/surat-tugas/${l.id}/print`)}><Printer className="w-4 h-4 mr-2" /> Cetak / Download</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => window.open(`/verifikasi/${l.id}`, "_blank")}><QrCode className="w-4 h-4 mr-2" /> Halaman Verifikasi</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => navigate(`/admin/surat-tugas/${l.id}/dokumen`)}><FileText className="w-4 h-4 mr-2" /> Dokumen Surat Penugasan</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => navigate(`/admin/surat-tugas/${l.id}/print`)}><Printer className="w-4 h-4 mr-2" /> Cetak Ringkas</DropdownMenuItem>
+                          {l.generate_code && <DropdownMenuItem onClick={() => window.open(`/verify/surat-tugas/${l.generate_code}`, "_blank")}><QrCode className="w-4 h-4 mr-2" /> Halaman Verifikasi</DropdownMenuItem>}
                           <DropdownMenuItem onClick={() => changeStatus(l, "selesai")}>Tandai Selesai</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => changeStatus(l, "dibatalkan")} className="text-rose-600">Batalkan</DropdownMenuItem>
                         </DropdownMenuContent>

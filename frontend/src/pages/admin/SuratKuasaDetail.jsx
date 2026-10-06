@@ -17,7 +17,7 @@ const EMPTY_ACC = {
   nomor_kontrak: "", nama_debitur: "", nik: "", telepon: "", alamat: "",
   provinsi: "", kabupaten: "", kecamatan: "", kelurahan: "", nomor_polisi: "",
   jenis_kendaraan: "", merk: "", model: "", tahun: "", warna: "",
-  nomor_rangka: "", nomor_mesin: "", keterangan: "", latitude: "", longitude: "",
+  nomor_rangka: "", nomor_mesin: "", stnk_name: "", keterangan: "", latitude: "", longitude: "",
 };
 
 export default function SuratKuasaDetail() {
@@ -158,6 +158,7 @@ export default function SuratKuasaDetail() {
             <div><Label>Warna</Label><Input value={form.warna} onChange={set("warna")} className="mt-1.5 rounded-xl" /></div>
             <div><Label>No. Rangka (opsional)</Label><Input value={form.nomor_rangka} onChange={set("nomor_rangka")} className="mt-1.5 rounded-xl" /></div>
             <div><Label>No. Mesin (opsional)</Label><Input value={form.nomor_mesin} onChange={set("nomor_mesin")} className="mt-1.5 rounded-xl" /></div>
+            <div><Label>STNK atas nama</Label><Input value={form.stnk_name} onChange={set("stnk_name")} placeholder="Kosongkan = nama debitur" className="mt-1.5 rounded-xl" /></div>
             <div><Label>Latitude (opsional)</Label><Input value={form.latitude} onChange={set("latitude")} className="mt-1.5 rounded-xl" /></div>
             <div><Label>Longitude (opsional)</Label><Input value={form.longitude} onChange={set("longitude")} className="mt-1.5 rounded-xl" /></div>
             <div className="sm:col-span-2"><Label>Keterangan Admin</Label><Textarea value={form.keterangan} onChange={set("keterangan")} className="mt-1.5 rounded-xl" /></div>

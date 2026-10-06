@@ -49,6 +49,8 @@ async def seed_all(db):
             "created_at": now_iso(), "updated_at": now_iso(),
         })
 
+    await ensure_document_config(db, company_id)
+
     # If already seeded accounts, stop (idempotent)
     if await db.accounts.count_documents({"company_id": company_id}) > 0:
         return
@@ -60,6 +62,8 @@ async def seed_all(db):
         "name": "Andi Pratama", "email": "petugas@demo.com",
         "password_hash": _hash("petugas123"), "telepon": "0812-3456-7890",
         "tim": "Tim Jakarta Selatan", "status": "aktif", "petugas_code": "PTG-00123",
+        "nik": "6372050507790001", "jabatan": "PROFCOLL",
+        "no_sertifikasi": "1105500694001125", "sertifikasi_valid_until": "2028-11-20",
         "avatar": "", "created_at": now_iso(), "updated_at": now_iso(),
     })
     await db.counters.update_one({"_id": f"petugas_{company_id}"}, {"$set": {"seq": 123}}, upsert=True)
@@ -132,8 +136,97 @@ async def seed_all(db):
             "nama_debitur": debitur, "nik": "", "telepon": "0812-0000-0000",
             "alamat": alamat, "provinsi": prov, "kabupaten": kab, "kecamatan": kec, "kelurahan": kel,
             "nomor_polisi": polisi, "jenis_kendaraan": jenis, "merk": merk, "model": model,
-            "tahun": tahun, "warna": warna, "nomor_rangka": "", "nomor_mesin": "",
+            "tahun": tahun, "warna": warna,
+            "nomor_rangka": f"MH1{kontrak[-7:]}EK{kontrak[-3:]}", "nomor_mesin": f"JF{kontrak[-7:]}",
+            "stnk_name": debitur,
             "client_id": client_id, "surat_kuasa_id": sk_id, "keterangan": "",
             "latitude": lat, "longitude": lng, "status": "BELUM_DITUGASKAN",
             "created_at": now_iso(), "updated_at": now_iso(),
         })
+
+
+async def ensure_document_config(db, company_id):
+    """Idempotent upgrade: extended company fields, document template, officer cert & vehicle fields."""
+    comp = await db.companies.find_one({"id": company_id})
+    if comp and "company_code" not in comp:
+        await db.companies.update_one({"id": company_id}, {"$set": {
+            "city": "Jakarta", "director_name": "Budi Hartono", "director_position": "DIREKTUR",
+            "company_code": "GKN", "number_format": "{sequence}/{company_code}/{month_name}/{year}",
+            "logo": "",
+        }})
+
+    if not await db.document_templates.find_one({"company_id": company_id, "version": "v1"}):
+        await db.document_templates.insert_one(_default_template(company_id))
+
+    # Upgrade existing demo officers (cert fields) if missing
+    await db.users.update_one(
+        {"email": "petugas@demo.com", "nik": {"$exists": False}},
+        {"$set": {"nik": "6372050507790001", "jabatan": "PROFCOLL",
+                  "no_sertifikasi": "1105500694001125", "sertifikasi_valid_until": "2028-11-20"}})
+    await db.users.update_one(
+        {"email": "siti@demo.com", "nik": {"$exists": False}},
+        {"$set": {"nik": "3271010101900002", "jabatan": "PROFCOLL",
+                  "no_sertifikasi": "1105500694002225", "sertifikasi_valid_until": "2027-06-15"}})
+
+    # Upgrade existing accounts: stnk_name from debitur where missing
+    try:
+        await db.accounts.update_many(
+            {"company_id": company_id, "stnk_name": {"$exists": False}},
+            [{"$set": {"stnk_name": "$nama_debitur"}}])
+    except Exception:
+        pass
+    # Fill sample chassis/engine for demo accounts that are empty
+    async for a in db.accounts.find({"company_id": company_id, "$or": [{"nomor_rangka": ""}, {"nomor_rangka": {"$exists": False}}]}):
+        k = a.get("nomor_kontrak", "0000000")
+        await db.accounts.update_one({"id": a["id"]}, {"$set": {
+            "nomor_rangka": f"MH1{k[-7:]}EK{k[-3:]}", "nomor_mesin": f"JF{k[-7:]}",
+        }})
+
+
+def _default_template(company_id):
+    return {
+        "id": _id(), "company_id": company_id, "version": "v1",
+        "ruang_lingkup_intro": "Melakukan serah terima terhadap {unit_count} unit kendaraan beserta segala kelengkapannya, di manapun kendaraan tersebut berada, untuk kemudian diserahkan kembali kepada {finance_name} sesuai dengan perjanjian pembiayaan konsumen No. {contract_number} yang ditandatangani oleh:",
+        "ruang_lingkup_closing": "Membuat dan menyerahkan Berita Acara Serah Terima Kendaraan (BASTK) kepada Debitur yang bersangkutan sebagaimana mestinya pada waktu penyerahan kendaraan dilakukan dan melakukan hal-hal lainnya sehubungan dengan hal di atas, segala sesuatu yang perlu dan berguna bagi kepentingan \"PERSEROAN\" dengan tetap memperhatikan peraturan perundang-undangan yang berlaku.",
+        "larangan": [
+            "Menggunakan kekerasan, ancaman, intimidasi, atau tekanan fisik maupun psikis.",
+            "Memasuki rumah atau tempat tertutup tanpa izin pihak yang berhak.",
+            "Mengambil objek jaminan secara paksa atau tanpa penyerahan sukarela.",
+            "Membawa barang yang bukan objek penugasan.",
+            "Menerima pembayaran tanpa kewenangan dan bukti resmi.",
+            "Mengalihkan tugas tanpa persetujuan tertulis.",
+            "Menggunakan identitas atau dokumen yang tidak sah.",
+            "Menyebarkan data debitur kepada pihak yang tidak berkepentingan.",
+            "Melakukan tindakan yang bertentangan dengan peraturan perundang-undangan.",
+        ],
+        "kewajiban": [
+            "Membawa identitas, sertifikasi profesi, dan surat penugasan selama menjalankan tugas.",
+            "Bersikap sopan, memperkenalkan diri, dan menjelaskan maksud kedatangan.",
+            "Membuat BASTK serta dokumentasi untuk setiap serah terima.",
+            "Menjaga keamanan objek sejak diterima sampai diserahkan.",
+            "Melaporkan setiap kendala, penolakan, atau dugaan pelanggaran.",
+        ],
+        "batas_kewenangan": [
+            "Penerima tugas hanya berwenang melakukan tindakan dalam ruang lingkup surat ini. Surat ini bukan perintah penyitaan dan tidak memberikan kewenangan kepolisian, pengadilan, atau kekuasaan publik lainnya.",
+            "Pelanggaran menjadi tanggung jawab pribadi pelaksana dan dapat mengakibatkan pencabutan tugas, tindakan disiplin, serta proses hukum.",
+        ],
+        "masa_berlaku": "Surat tugas berlaku sejak {valid_from} sampai dengan {valid_until}. Surat berakhir otomatis ketika objek telah diserahterimakan dan tugas dinyatakan selesai, penugasan dibatalkan atau dicabut oleh PERSEROAN, atau terdapat keadaan lain yang menyebabkan penugasan tidak dapat dilanjutkan.",
+        "verifikasi_note": "Pindai QR untuk memastikan penerbit, nomor, tanggal, dan status dokumen langsung dari sistem. Data debitur tidak ditampilkan secara publik.",
+        "bastk_intro": "Pada hari ini, {day_name}, {date}, yang bertanda tangan di bawah ini:",
+        "bastk_handover": "Dengan ini secara sukarela menyerahkan kendaraan bermotor kepada {finance_name} yang bekerja sama dengan {company_name} dalam keadaan dan kondisi sebagaimana tersebut secara rinci di bawah ini:",
+        "bastk_ketentuan": "Apabila dalam waktu 7 (tujuh) hari sejak tanggal/waktu penyerahan tersebut di atas, pihak konsumen (Debitur) tidak ada konfirmasi/penyelesaian untuk pelunasan, maka pihak pembiayaan berhak menjual/melelang kendaraan tersebut sesuai dengan Perjanjian Pembiayaan Konsumen dan Pengakuan Hutang.",
+        "checklist_items": [
+            "STNK", "Lampu Stop (Belakang)", "Lampu Sein Depan R/L", "Lampu Sein Belakang R/L",
+            "Cover Body", "Spakbor Depan", "Spakbor Belakang", "Tutup Shock Depan R/L",
+            "Kunci Kontak", "Panel Starter/Lampu", "Besi Belakang Jok", "Pedal Versneling",
+            "Accu", "Karburator", "Filter Udara", "Master Rem Cakram", "Kaliper/Jepitan Disk",
+            "Disk Brake", "Speedometer", "Standar Tengah", "Standar Samping", "Kick Starter",
+            "Tutup Rantai", "Knalpot", "Spion", "Pedal Rem", "Mesin Dapat Hidup",
+        ],
+        "distribution": [
+            "Lembar Putih: Untuk Konsumen",
+            "Lembar Merah: Untuk {company_name}",
+            "Lembar Kuning: Untuk Pembiayaan/Leasing",
+        ],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }

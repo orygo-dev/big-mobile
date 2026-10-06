@@ -15,6 +15,7 @@ import AkunUnit from "@/pages/admin/AkunUnit";
 import Penugasan from "@/pages/admin/Penugasan";
 import SuratTugas from "@/pages/admin/SuratTugas";
 import SuratTugasPrint from "@/pages/admin/SuratTugasPrint";
+import SuratPenugasanDoc from "@/pages/admin/SuratPenugasanDoc";
 import LaporanPetugas from "@/pages/admin/LaporanPetugas";
 import LaporanDetail from "@/pages/admin/LaporanDetail";
 import Petugas from "@/pages/admin/Petugas";
@@ -44,10 +45,14 @@ export default function App() {
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
           <Route path="/verifikasi/:id" element={<Verify />} />
+          <Route path="/verify/surat-tugas/:code" element={<Verify />} />
 
           {/* Print (standalone, no sidebar) */}
           <Route path="/admin/surat-tugas/:id/print" element={
             <ProtectedRoute role="admin"><SuratTugasPrint /></ProtectedRoute>
+          } />
+          <Route path="/admin/surat-tugas/:id/dokumen" element={
+            <ProtectedRoute role="admin"><SuratPenugasanDoc /></ProtectedRoute>
           } />
 
           {/* Admin */}
