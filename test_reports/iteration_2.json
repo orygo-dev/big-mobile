@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 2 — tested the NEW Surat Penugasan + BASTK dynamic document feature end-to-end (backend + frontend) plus regression. All 29 backend tests pass (24 regression + 5 new in test_document_feature.py). Frontend document page at /admin/surat-tugas/{id}/dokumen renders 3 A4 pages with correct data-testids (doc-page-1 / doc-page-2 / doc-page-bastk-0), 9 LARANGAN items, 5 KEWAJIBAN items, 27-row BASTK checklist (split across 2 side-by-side tables), QR image, status badge, and all toolbar buttons (print/download/cancel; finalize hidden when already ACTIVE as expected). document_number renders in the configured format '0001/GKN/OKTOBER/2026'. Snapshot immutability confirmed via API: after finalize, renaming the petugas does NOT change the officer name returned by GET /api/surat-tugas/{id}/document. Public verify page /verify/surat-tugas/{code} returns VALID + nomor + company + petugas_name + valid_until + generate_code and leaks NO debtor data (name/alamat/nik/telp/rangka/mesin all absent). Cancel flow -> public verify returns DIBATALKAN. Petugas form has new data-testids (nik/jabatan/sertifikasi inputs). Pengaturan company edit modal exposes company-code-input, company-format-input, company-save-button. QR endpoint /api/surat-tugas/{id}/qr returns a valid public PNG (no auth required).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/public/verify/{code}", "issue": "Returns 200 with valid=false for unknown codes instead of 404. Functionally OK (frontend handles it) but inconsistent with REST conventions."},
+      {"endpoint": "POST /api/surat-tugas/{lid}/finalize", "issue": "generate_code is derived from uuid.uuid4().hex[:20].upper() — 20 hex chars (80 bits). Enough for uniqueness but no collision check against existing codes. Low risk."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Document BASTK page", "issues": ["Checklist is split into TWO side-by-side tables of 15 + 12 rows. Readable at A4 width but tester noted a selector-level nuance (not a bug): any automation must iterate ALL table.chk elements, not just the first, to count 27 rows."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_document_feature.py",
+    "/app/backend/tests/test_fieldcollector_api.py",
+    "/app/test_reports/pytest/doc_feature.xml",
+    "/app/test_reports/pytest/all.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SuratPenugasanDoc.jsx: QR <img src={API}/surat-tugas/{id}/qr> uses crossOrigin='anonymous' — fine for same-origin ingress but worth confirming CORS if asset host changes.",
+    "server.py build_document_data() always rebuilds for DRAFT letters; this means DRAFT previews show CURRENT data (correct behaviour). Make sure UI copy clearly tells admins that only ACTIVE snapshot is locked (currently done via amber banner — good).",
+    "server.py number_format uses Python str.format with company-supplied template; if an admin provides an invalid placeholder like {foo} the finalize call will 500. Consider try/except around fmt.format with a fallback to default format.",
+    "server.py register_number uses `int_to_roman(year)` for the whole year (e.g. 'MMXXVI') and `MONTH_ROMAN[month]` — matches spec '1/MMXXVI/X' and verified working.",
+    "GET /api/surat-tugas/{lid}/qr is intentionally public (no auth) which is correct for QR scanning use case; verify_url embeds the generate_code (or letter id fallback) — good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_document_feature.py (new)"
+  ],
+  "success_rate": {"backend": "100% (29/29)", "frontend": "100% (all critical doc-feature flows + regression markers verified)"},
+  "test_credentials": "Admin: admin@demo.com/admin123, Petugas: petugas@demo.com/petugas123.",
+  "seed_data_creation": "test_document_feature.py creates per-run TEST_PT_* client, TEST/SK/* surat kuasa, TEST-KON-* account with chassis/engine SECRET_*, TEST_Officer_* petugas, and a penugasan -> surat tugas. Letter is cancelled at end of flow test. Also modified company_code='GKN' and number_format='{sequence}/{company_code}/{month_name}/{year}' (matches seed defaults, no destructive change).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend doc feature fully covered. The existing seeded finalized letter id 714e924a-27de-4400-8c16-e3844750cca7 has document_number 0001/GKN/OKTOBER/2026 and status 'aktif' at time of last run — note the TestFinalizeAndFormat.test_full_finalize_verify_cancel_flow cancels its own freshly-created letter, so the seeded letter stays usable for UI inspection. If PT Garda sequence has advanced, new finalize will produce 0002+, 0003+… that's fine. Public verify endpoint intentionally returns 200 + valid=false for unknown codes.",
+  "rca of the issue": "No blocking issues. New feature implemented correctly and matches spec: 3-page document, 9 LARANGAN, 5 KEWAJIBAN, 27-row BASTK checklist, configurable number_format, immutable snapshot on finalize (verified by petugas rename test), public verify without debtor PII leak, idempotent finalize, cancel flow sets DIBATALKAN publicly."
+}

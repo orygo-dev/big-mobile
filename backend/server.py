@@ -764,8 +764,11 @@ async def finalize_document(lid: str, request: Request, user: dict = Depends(adm
     year = now.year
     seq = await next_sequence(f"docnum_{user['company_id']}_{year}")
     fmt = company.get("number_format") or "{sequence}/{company_code}/{month_name}/{year}"
-    document_number = fmt.format(sequence=f"{seq:04d}", company_code=company.get("company_code", ""),
-                                 month_name=ID_MONTHS_UP[now.month], year=year)
+    try:
+        document_number = fmt.format(sequence=f"{seq:04d}", company_code=company.get("company_code", ""),
+                                     month_name=ID_MONTHS_UP[now.month], year=year)
+    except (KeyError, IndexError, ValueError):
+        document_number = f"{seq:04d}/{company.get('company_code', '')}/{ID_MONTHS_UP[now.month]}/{year}"
     generate_code = f"GNR-{year}-{uuid.uuid4().hex[:20].upper()}"
     reg_seq = await next_sequence(f"bastk_{user['company_id']}_{year}")
     register_number = f"{reg_seq}/{int_to_roman(year)}/{MONTH_ROMAN[now.month]}"
