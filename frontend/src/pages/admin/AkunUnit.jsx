@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import api, { errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ACCOUNT_STATUS } from "@/lib/constants";
@@ -22,7 +21,7 @@ export default function AkunUnit() {
   const [provinsi, setProvinsi] = useState("");
   const [page, setPage] = useState(1);
   const [clients, setClients] = useState([]);
-  const [selected, setSelected] = useState([]);
+  const [assignId, setAssignId] = useState(null); // account id to assign
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -40,10 +39,7 @@ export default function AkunUnit() {
   useEffect(() => { api.get("/clients").then(({ data }) => setClients(data)); }, []);
   useEffect(() => { setPage(1); }, [search, clientFilter, statusFilter, provinsi]);
 
-  const toggle = (id) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
-  const assignable = data.items.filter((a) => a.status === "BELUM_DITUGASKAN").map((a) => a.id);
-  const allChecked = assignable.length > 0 && assignable.every((id) => selected.includes(id));
-  const toggleAll = () => setSelected(allChecked ? selected.filter((id) => !assignable.includes(id)) : [...new Set([...selected, ...assignable])]);
+  const openAssign = (id) => { setAssignId(id); setDialogOpen(true); };
 
   const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
 
@@ -51,7 +47,7 @@ export default function AkunUnit() {
     <div className="space-y-5 animate-fade-in">
       <div>
         <h1 className="font-heading text-2xl font-bold text-slate-900">Kontrak & Unit</h1>
-        <p className="text-sm text-slate-500 mt-1">Pilih beberapa akun untuk membuat penugasan.</p>
+        <p className="text-sm text-slate-500 mt-1">Kelola data kontrak & unit. Tugaskan satu unit ke petugas dari kolom Aksi.</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col lg:flex-row gap-3 lg:items-center">
@@ -60,8 +56,8 @@ export default function AkunUnit() {
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari debitur, kontrak, polisi..." className="pl-9 rounded-xl" data-testid="akun-search-input" />
         </div>
         <Select value={clientFilter} onValueChange={setClientFilter}>
-          <SelectTrigger className="rounded-xl lg:w-48" data-testid="akun-client-filter"><SelectValue placeholder="Klien" /></SelectTrigger>
-          <SelectContent><SelectItem value="all">Semua Klien</SelectItem>{clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.nama_perusahaan}</SelectItem>)}</SelectContent>
+          <SelectTrigger className="rounded-xl lg:w-48" data-testid="akun-client-filter"><SelectValue placeholder="Pemberi Kuasa" /></SelectTrigger>
+          <SelectContent><SelectItem value="all">Semua Pemberi Kuasa</SelectItem>{clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.nama_perusahaan}</SelectItem>)}</SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="rounded-xl lg:w-48" data-testid="akun-status-filter"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -70,49 +66,45 @@ export default function AkunUnit() {
         <Input value={provinsi} onChange={(e) => setProvinsi(e.target.value)} placeholder="Wilayah/Provinsi" className="rounded-xl lg:w-40" data-testid="akun-wilayah-filter" />
       </div>
 
-      {selected.length > 0 && (
-        <div className="bg-blue-600 text-white rounded-2xl p-4 flex items-center justify-between animate-fade-in">
-          <p className="font-medium text-sm">{selected.length} akun dipilih</p>
-          <Button onClick={() => setDialogOpen(true)} className="rounded-xl bg-white text-blue-700 hover:bg-blue-50" data-testid="akun-buat-penugasan-button">
-            <ClipboardList className="w-4 h-4 mr-1" /> Buat Penugasan
-          </Button>
-        </div>
-      )}
-
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
         ) : data.items.length === 0 ? (
-          <EmptyState icon={Car} title="Tidak ada data akun/unit" desc="Coba ubah filter atau tambahkan akun dari Surat Kuasa." />
+          <EmptyState icon={Car} title="Tidak ada data kontrak/unit" desc="Coba ubah filter atau tambahkan unit dari Surat Kuasa." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-slate-400 uppercase tracking-wider">
                 <tr className="text-left">
-                  <th className="px-5 py-3 w-10"><Checkbox checked={allChecked} onCheckedChange={toggleAll} data-testid="akun-select-all" /></th>
-                  <th className="px-3 py-3 font-medium">Debitur</th>
+                  <th className="px-5 py-3 font-medium">Debitur</th>
                   <th className="px-3 py-3 font-medium">No. Kontrak</th>
                   <th className="px-3 py-3 font-medium">No. Polisi</th>
                   <th className="px-3 py-3 font-medium">Unit</th>
-                  <th className="px-3 py-3 font-medium">Klien</th>
+                  <th className="px-3 py-3 font-medium">Pemberi Kuasa</th>
                   <th className="px-3 py-3 font-medium">Wilayah</th>
-                  <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-3 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((a) => (
                   <tr key={a.id} className="border-t border-slate-50 hover:bg-slate-50/50" data-testid={`akun-row-${a.id}`}>
-                    <td className="px-5 py-3">
-                      <Checkbox checked={selected.includes(a.id)} onCheckedChange={() => toggle(a.id)}
-                        disabled={a.status !== "BELUM_DITUGASKAN"} data-testid={`akun-check-${a.id}`} />
-                    </td>
-                    <td className="px-3 py-3 font-medium text-slate-800">{a.nama_debitur}</td>
+                    <td className="px-5 py-3 font-medium text-slate-800">{a.nama_debitur}</td>
                     <td className="px-3 py-3 font-mono text-xs text-slate-600">{a.nomor_kontrak}</td>
                     <td className="px-3 py-3 font-mono text-slate-700">{a.nomor_polisi}</td>
                     <td className="px-3 py-3 text-slate-600">{a.merk} {a.model}</td>
                     <td className="px-3 py-3 text-slate-500 text-xs">{a.client_name}</td>
                     <td className="px-3 py-3 text-slate-500 text-xs">{a.kabupaten}, {a.provinsi}</td>
-                    <td className="px-5 py-3"><StatusBadge map={ACCOUNT_STATUS} value={a.status} /></td>
+                    <td className="px-3 py-3"><StatusBadge map={ACCOUNT_STATUS} value={a.status} /></td>
+                    <td className="px-5 py-3 text-right">
+                      {a.status === "BELUM_DITUGASKAN" ? (
+                        <Button size="sm" onClick={() => openAssign(a.id)} className="rounded-lg bg-blue-600 hover:bg-blue-700 h-8" data-testid={`akun-tugaskan-${a.id}`}>
+                          <ClipboardList className="w-3.5 h-3.5 mr-1" /> Tugaskan
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-slate-400">{a.petugas_name ? `→ ${a.petugas_name}` : "-"}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -122,7 +114,7 @@ export default function AkunUnit() {
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-400">Total {data.total} akun</p>
+        <p className="text-sm text-slate-400">Total {data.total} unit</p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-xl" data-testid="akun-prev-page"><ChevronLeft className="w-4 h-4" /></Button>
           <span className="text-sm text-slate-600">Hal {page} / {totalPages}</span>
@@ -130,8 +122,8 @@ export default function AkunUnit() {
         </div>
       </div>
 
-      <PenugasanDialog open={dialogOpen} onOpenChange={setDialogOpen} accountIds={selected}
-        onSuccess={() => { setSelected([]); load(); }} />
+      <PenugasanDialog open={dialogOpen} onOpenChange={setDialogOpen} accountId={assignId}
+        onSuccess={() => { load(); }} />
     </div>
   );
 }

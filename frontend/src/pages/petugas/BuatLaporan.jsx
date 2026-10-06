@@ -128,7 +128,7 @@ export default function BuatLaporan() {
     setSubmitting(true);
     try {
       const fd = new FormData();
-      fd.append("assignment_letter_id", data.letter_id);
+      fd.append("assignment_id", data.assignment_id);
       fd.append("account_id", accountId);
       fd.append("status", status);
       fd.append("catatan", catatan);

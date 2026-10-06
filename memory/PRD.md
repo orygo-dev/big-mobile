@@ -36,6 +36,16 @@ Auth & role; Klien CRUD (soft-deactivate); Surat Kuasa + akun terkait; Data Akun
 - P3: refactor server.py menjadi modul per-domain (maintainability)
 - P3: serve_file re-check user aktif (bukan hanya signature token)
 
+## Workflow Penugasan (2025-07 — REFACTORED)
+Aturan bisnis: **1 Penugasan = 1 Unit = 1 Petugas = 1 Surat Penugasan**.
+- `assignments` = koleksi operasional UTAMA (company_id, account_id, officer_id, power_of_attorney_id, client_id, status[AKTIF/SELESAI/DIBATALKAN/KEDALUWARSA], valid_from, valid_until, note, assignment_number, assignment_letter_id, created_by).
+- `assignment_letters` = dokumen resmi yang di-generate dari assignment (assignment_id, document_number=nomor resmi tunggal, generate_code, register_number, status, document_snapshot, auto-ACTIVE saat dibuat — tidak ada langkah finalisasi manual).
+- Internal operational id = `assignment_number` (AS/FC/YYYY/MM/NNNN); nomor dokumen resmi = `document_number` (ditampilkan konsisten di halaman & cetak).
+- POST /api/penugasan input: {petugas_id, account_id, valid_from, valid_until, catatan}. Memblokir jika sudah ada assignment AKTIF untuk unit yang sama (400).
+- Tugas petugas (GET /api/my/tugas, /my/tugas/{account_id}) dimuat dari `assignments`. Laporan (POST /api/laporan) memakai `assignment_id` (kompatibel mundur dengan assignment_letter_id).
+- Migrasi startup non-destruktif: backfill assignments dari letter lama & assignment_id ke report lama.
+- Teruji: 18/18 tes backend PASS.
+
 ## Next Tasks
 - Tidak ada blocker. Menunggu feedback user untuk prioritas berikutnya.
 

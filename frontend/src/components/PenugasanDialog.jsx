@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,38 +7,50 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ClipboardList } from "lucide-react";
+import { Loader2, ClipboardList, CheckCircle2, FileText } from "lucide-react";
 import { toast } from "sonner";
 
-export default function PenugasanDialog({ open, onOpenChange, accountIds, onSuccess }) {
+// 1 Penugasan = 1 Unit = 1 Petugas = 1 Surat Penugasan.
+// `accountId` (optional) preselects a unit (e.g. from the Kontrak & Unit page).
+export default function PenugasanDialog({ open, onOpenChange, accountId = null, onSuccess }) {
+  const navigate = useNavigate();
   const [petugasList, setPetugasList] = useState([]);
+  const [unitList, setUnitList] = useState([]);
   const [petugasId, setPetugasId] = useState("");
-  const [tanggalTugas, setTanggalTugas] = useState(new Date().toISOString().slice(0, 10));
-  const [masaBerlaku, setMasaBerlaku] = useState("");
+  const [unitId, setUnitId] = useState(accountId || "");
+  const [validFrom, setValidFrom] = useState(new Date().toISOString().slice(0, 10));
+  const [validUntil, setValidUntil] = useState("");
   const [catatan, setCatatan] = useState("");
   const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState(null); // success payload
 
   useEffect(() => {
-    if (open) {
-      api.get("/petugas").then(({ data }) => setPetugasList(data.filter((p) => p.status === "aktif"))).catch(() => {});
+    if (!open) return;
+    setResult(null);
+    setUnitId(accountId || "");
+    api.get("/petugas").then(({ data }) => setPetugasList(data.filter((p) => p.status === "aktif"))).catch(() => {});
+    // Only load selectable units when none is preselected
+    if (!accountId) {
+      api.get("/akun", { params: { status: "BELUM_DITUGASKAN", limit: 1000, page: 1 } })
+        .then(({ data }) => setUnitList(data.items || [])).catch(() => {});
     }
-  }, [open]);
+  }, [open, accountId]);
 
   const submit = async () => {
-    if (!petugasId) { toast.error("Pilih petugas terlebih dahulu"); return; }
+    if (!unitId) { toast.error("Pilih satu unit terlebih dahulu"); return; }
+    if (!petugasId) { toast.error("Pilih satu petugas terlebih dahulu"); return; }
     if (saving) return;
     setSaving(true);
     try {
       const { data } = await api.post("/penugasan", {
         petugas_id: petugasId,
-        account_ids: accountIds,
-        tanggal_tugas: tanggalTugas,
-        masa_berlaku: masaBerlaku || null,
+        account_id: unitId,
+        valid_from: validFrom,
+        valid_until: validUntil || null,
         catatan,
       });
-      toast.success(`Surat Tugas ${data.nomor} berhasil dibuat`);
-      onOpenChange(false);
-      setPetugasId(""); setCatatan(""); setMasaBerlaku("");
+      toast.success("Penugasan berhasil dibuat");
+      setResult(data);
       onSuccess?.(data);
     } catch (e) {
       toast.error(errMsg(e));
@@ -46,52 +59,108 @@ export default function PenugasanDialog({ open, onOpenChange, accountIds, onSucc
     }
   };
 
+  const close = () => {
+    onOpenChange(false);
+    setPetugasId(""); setUnitId(accountId || ""); setCatatan(""); setValidUntil("");
+    setResult(null);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) close(); else onOpenChange(v); }}>
       <DialogContent className="sm:max-w-md" data-testid="penugasan-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-heading">
             <ClipboardList className="w-5 h-5 text-blue-600" /> Buat Penugasan
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="text-sm bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-blue-800">
-            {accountIds.length} akun/unit terpilih akan dimasukkan ke dalam Surat Tugas.
-          </div>
-          <div>
-            <Label>Pilih Petugas</Label>
-            <Select value={petugasId} onValueChange={setPetugasId}>
-              <SelectTrigger className="mt-1.5 rounded-xl" data-testid="penugasan-petugas-select">
-                <SelectValue placeholder="-- Pilih Petugas --" />
-              </SelectTrigger>
-              <SelectContent>
-                {petugasList.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.petugas_code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Tanggal Tugas</Label>
-              <Input type="date" value={tanggalTugas} onChange={(e) => setTanggalTugas(e.target.value)} className="mt-1.5 rounded-xl" data-testid="penugasan-tanggal-input" />
+
+        {result ? (
+          <div className="py-2 space-y-4" data-testid="penugasan-success-panel">
+            <div className="flex flex-col items-center text-center gap-2 py-2">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+              </div>
+              <p className="font-heading font-semibold text-slate-800">Penugasan berhasil dibuat</p>
             </div>
-            <div>
-              <Label>Masa Berlaku</Label>
-              <Input type="date" value={masaBerlaku} onChange={(e) => setMasaBerlaku(e.target.value)} className="mt-1.5 rounded-xl" data-testid="penugasan-masa-input" />
+            <div className="bg-slate-50 border border-slate-200 rounded-xl divide-y divide-slate-100 text-sm">
+              <div className="flex justify-between px-3 py-2">
+                <span className="text-slate-400">Penugasan ID</span>
+                <span className="font-mono text-slate-700 text-xs" data-testid="penugasan-result-id">{result.assignment_number || result.assignment_id}</span>
+              </div>
+              <div className="flex justify-between px-3 py-2">
+                <span className="text-slate-400">No. Surat Penugasan</span>
+                <span className="font-mono font-semibold text-slate-800 text-xs" data-testid="penugasan-result-docnum">{result.document_number}</span>
+              </div>
             </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={close} className="rounded-xl">Tutup</Button>
+              <Button onClick={() => { close(); navigate(`/admin/surat-tugas/${result.id}/dokumen`); }}
+                className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="penugasan-lihat-surat-button">
+                <FileText className="w-4 h-4 mr-1" /> Lihat Surat Penugasan
+              </Button>
+            </DialogFooter>
           </div>
-          <div>
-            <Label>Catatan untuk Petugas</Label>
-            <Textarea value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Instruksi tambahan..." className="mt-1.5 rounded-xl" data-testid="penugasan-catatan-input" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl">Batal</Button>
-          <Button onClick={submit} disabled={saving} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="penugasan-submit-button">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Buat Surat Tugas"}
-          </Button>
-        </DialogFooter>
+        ) : (
+          <>
+            <div className="space-y-4 py-2">
+              <div>
+                <Label>Pilih Unit</Label>
+                {accountId ? (
+                  <div className="mt-1.5 text-sm bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 text-blue-800" data-testid="penugasan-unit-fixed">
+                    Unit terpilih sudah ditetapkan.
+                  </div>
+                ) : (
+                  <Select value={unitId} onValueChange={setUnitId}>
+                    <SelectTrigger className="mt-1.5 rounded-xl" data-testid="penugasan-unit-select">
+                      <SelectValue placeholder="-- Pilih Unit (status Belum Ditugaskan) --" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unitList.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">Tidak ada unit tersedia</div>}
+                      {unitList.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.nama_debitur} · {u.nomor_polisi || "-"} · {u.nomor_kontrak}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div>
+                <Label>Pilih Petugas</Label>
+                <Select value={petugasId} onValueChange={setPetugasId}>
+                  <SelectTrigger className="mt-1.5 rounded-xl" data-testid="penugasan-petugas-select">
+                    <SelectValue placeholder="-- Pilih Petugas --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {petugasList.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name} ({p.petugas_code})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Berlaku Dari</Label>
+                  <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} className="mt-1.5 rounded-xl" data-testid="penugasan-valid-from-input" />
+                </div>
+                <div>
+                  <Label>Berlaku Sampai</Label>
+                  <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="mt-1.5 rounded-xl" data-testid="penugasan-valid-until-input" />
+                </div>
+              </div>
+              <div>
+                <Label>Catatan untuk Petugas (opsional)</Label>
+                <Textarea value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Instruksi tambahan..." className="mt-1.5 rounded-xl" data-testid="penugasan-catatan-input" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={close} className="rounded-xl">Batal</Button>
+              <Button onClick={submit} disabled={saving} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="penugasan-submit-button">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Buat Penugasan"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

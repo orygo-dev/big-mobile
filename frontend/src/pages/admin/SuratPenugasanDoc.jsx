@@ -72,11 +72,6 @@ export default function SuratPenugasanDoc() {
   }, [id, navigate]);
   useEffect(() => { load(); }, [load]);
 
-  const finalize = async () => {
-    setBusy(true);
-    try { const { data } = await api.post(`/surat-tugas/${id}/finalize`); setDoc(data); toast.success("Dokumen difinalisasi. Nomor & kode terkunci."); }
-    catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
-  };
   const cancel = async () => {
     setBusy(true);
     try { await api.patch(`/surat-tugas/${id}/status`, { status: "dibatalkan" }); toast.success("Surat Tugas dibatalkan"); load(); }
@@ -138,11 +133,6 @@ export default function SuratPenugasanDoc() {
             <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${finalized ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`} data-testid="doc-status-badge">
               {finalized ? "ACTIVE / FINALIZED" : "DRAFT / PREVIEW"}
             </span>
-            {!finalized && doc.letter_status === "aktif" && (
-              <Button onClick={finalize} disabled={busy} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="doc-finalize-button">
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle2 className="w-4 h-4 mr-1" /> Finalisasi</>}
-              </Button>
-            )}
             <Button onClick={() => doPrint("")} variant="outline" className="rounded-xl" data-testid="doc-print-button"><Printer className="w-4 h-4 mr-1" /> Cetak</Button>
             <Button onClick={() => doPrint(".pdf")} className="rounded-xl bg-slate-900 hover:bg-slate-800" data-testid="doc-download-button"><Download className="w-4 h-4 mr-1" /> Download PDF</Button>
             {doc.letter_status === "aktif" && (
@@ -150,7 +140,6 @@ export default function SuratPenugasanDoc() {
             )}
           </div>
         </div>
-        {!finalized && <p className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Ini pratinjau. Klik Finalisasi untuk mengunci nomor surat, kode generate, dan QR verifikasi.</p>}
       </div>
 
       {/* PAGE 1 */}

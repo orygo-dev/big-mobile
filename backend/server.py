@@ -217,10 +217,20 @@ class CompanyInput(BaseModel):
 
 class PenugasanInput(BaseModel):
     petugas_id: str
-    account_ids: List[str]
-    tanggal_tugas: Optional[str] = None
-    masa_berlaku: Optional[str] = None
+    account_id: str
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
     catatan: Optional[str] = ""
+
+
+# Assignment status values (operational)
+ASSIGNMENT_ACTIVE = "AKTIF"
+ASSIGNMENT_TERMINAL = {"SELESAI", "DIBATALKAN", "KEDALUWARSA"}
+# Map letter (document) status -> assignment status
+LETTER_TO_ASSIGNMENT_STATUS = {
+    "aktif": "AKTIF", "selesai": "SELESAI",
+    "dibatalkan": "DIBATALKAN", "kedaluwarsa": "KEDALUWARSA",
+}
 
 class StatusUpdate(BaseModel):
     status: str
@@ -577,54 +587,95 @@ async def enrich_letter(letter: dict) -> dict:
 
 @api_router.post("/penugasan")
 async def create_penugasan(data: PenugasanInput, request: Request, user: dict = Depends(admin_required)):
-    if not data.account_ids:
-        raise HTTPException(status_code=400, detail="Pilih minimal satu akun/unit")
+    # 1 Assignment = 1 Unit = 1 Officer = 1 Assignment Letter
     petugas = await db.users.find_one({"id": data.petugas_id, "company_id": user["company_id"], "role": "petugas"})
     if not petugas:
         raise HTTPException(status_code=404, detail="Petugas tidak ditemukan")
-    accs = await db.accounts.find({"id": {"$in": data.account_ids}, "company_id": user["company_id"]}, {"_id": 0}).to_list(1000)
-    if len(accs) != len(data.account_ids):
-        raise HTTPException(status_code=400, detail="Sebagian akun tidak ditemukan")
-    for a in accs:
-        if a["status"] not in ("BELUM_DITUGASKAN",):
-            raise HTTPException(status_code=400, detail=f"Akun {a['nama_debitur']} sudah ditugaskan")
-    # business rule: surat kuasa harus aktif
-    sk_id = accs[0]["surat_kuasa_id"]
+    acc = await db.accounts.find_one({"id": data.account_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not acc:
+        raise HTTPException(status_code=404, detail="Unit/akun tidak ditemukan")
+
+    # Rule: a unit may only have ONE active assignment at a time.
+    active = await db.assignments.find_one({"account_id": data.account_id, "status": ASSIGNMENT_ACTIVE})
+    if active:
+        raise HTTPException(
+            status_code=400,
+            detail="Unit ini masih memiliki penugasan AKTIF. Selesaikan atau batalkan penugasan lama terlebih dahulu.",
+        )
+
+    # Business rule: Surat Kuasa harus aktif
+    sk_id = acc["surat_kuasa_id"]
     sk = await db.power_of_attorneys.find_one({"id": sk_id})
     if not sk or sk.get("status") != "aktif":
-        raise HTTPException(status_code=400, detail="Surat Kuasa tidak aktif, tidak dapat membuat Surat Tugas")
-    client_id = accs[0]["client_id"]
+        raise HTTPException(status_code=400, detail="Surat Kuasa tidak aktif, tidak dapat membuat Penugasan")
+    client_id = acc["client_id"]
 
     now = datetime.now(timezone.utc)
-    seq = await next_sequence(f"st_{user['company_id']}_{now.year}_{now.month}")
-    nomor = f"ST/FC/{now.year}/{now.month:02d}/{seq:04d}"
+    year = now.year
+    # Internal operational identifier (not the official document number)
+    aseq = await next_sequence(f"asg_{user['company_id']}_{year}_{now.month}")
+    assignment_number = f"AS/FC/{year}/{now.month:02d}/{aseq:04d}"
+
+    # Official document number (single official number, generated immediately -- no manual finalize step)
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0}) or {}
+    dseq = await next_sequence(f"docnum_{user['company_id']}_{year}")
+    fmt = company.get("number_format") or "{sequence}/{company_code}/{month_name}/{year}"
+    try:
+        document_number = fmt.format(sequence=f"{dseq:04d}", company_code=company.get("company_code", ""),
+                                     month_name=ID_MONTHS_UP[now.month], year=year)
+    except (KeyError, IndexError, ValueError):
+        document_number = f"{dseq:04d}/{company.get('company_code', '')}/{ID_MONTHS_UP[now.month]}/{year}"
+    generate_code = f"GNR-{year}-{uuid.uuid4().hex[:20].upper()}"
+    reg_seq = await next_sequence(f"bastk_{user['company_id']}_{year}")
+    register_number = f"{reg_seq}/{int_to_roman(year)}/{MONTH_ROMAN[now.month]}"
+
+    valid_from = data.valid_from or now.date().isoformat()
+    valid_until = data.valid_until or None
 
     assignment_id = new_id()
     letter_id = new_id()
-    await db.assignments.insert_one({
-        "id": assignment_id, "company_id": user["company_id"], "petugas_id": data.petugas_id,
-        "tanggal_tugas": data.tanggal_tugas, "masa_berlaku": data.masa_berlaku,
-        "catatan": data.catatan, "assignment_letter_id": letter_id,
-        "created_at": now_iso(), "updated_at": now_iso(),
-    })
-    for aid in data.account_ids:
-        await db.assignment_accounts.insert_one({
-            "id": new_id(), "assignment_id": assignment_id, "letter_id": letter_id, "account_id": aid,
-        })
+
+    # --- Assignment: the MAIN operational transaction ---
+    assignment = {
+        "id": assignment_id, "company_id": user["company_id"],
+        "account_id": data.account_id, "officer_id": data.petugas_id,
+        "power_of_attorney_id": sk_id, "client_id": client_id,
+        "status": ASSIGNMENT_ACTIVE,
+        "valid_from": valid_from, "valid_until": valid_until,
+        "note": data.catatan or "",
+        "assignment_number": assignment_number,
+        "assignment_letter_id": letter_id,
+        "created_by": user["id"], "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.assignments.insert_one(assignment)
+
+    # --- Assignment Letter: the official document generated FROM the assignment ---
     letter = {
-        "id": letter_id, "company_id": user["company_id"], "nomor": nomor,
-        "assignment_id": assignment_id, "petugas_id": data.petugas_id,
-        "client_id": client_id, "surat_kuasa_id": sk_id,
-        "account_ids": data.account_ids, "tanggal": data.tanggal_tugas or now_iso(),
-        "masa_berlaku": data.masa_berlaku, "catatan": data.catatan, "status": "aktif",
-        "document_status": "DRAFT", "template_version": "v1",
+        "id": letter_id, "company_id": user["company_id"], "assignment_id": assignment_id,
+        "nomor": document_number,  # legacy display field now mirrors official document_number
+        "document_number": document_number, "generate_code": generate_code,
+        "register_number": register_number, "issue_date": now.date().isoformat(),
+        "petugas_id": data.petugas_id, "client_id": client_id, "surat_kuasa_id": sk_id,
+        "account_id": data.account_id, "account_ids": [data.account_id],
+        "tanggal": valid_from, "masa_berlaku": valid_until, "catatan": data.catatan or "",
+        "status": "aktif", "document_status": "ACTIVE", "template_version": "v1",
+        "generated_by": user["name"], "generated_at": now_iso(),
         "created_at": now_iso(), "updated_at": now_iso(),
     }
+    snapshot = await build_document_data(letter, user["name"])
+    letter["document_snapshot"] = snapshot
+    letter["snapshot_data"] = snapshot  # task-named alias
     await db.assignment_letters.insert_one(letter)
-    await db.accounts.update_many({"id": {"$in": data.account_ids}}, {"$set": {"status": "DITUGASKAN", "updated_at": now_iso()}})
+
+    await db.accounts.update_one({"id": data.account_id}, {"$set": {"status": "DITUGASKAN", "updated_at": now_iso()}})
     await log_audit(user, "Membuat penugasan", "assignment", assignment_id, request)
-    await log_audit(user, "Membuat Surat Tugas", "assignment_letter", letter_id, request)
-    return await enrich_letter(clean(letter))
+    await log_audit(user, "Menerbitkan Surat Penugasan", "assignment_letter", letter_id, request)
+
+    out = await enrich_letter(clean(letter))
+    out["assignment_id"] = assignment_id
+    out["assignment_number"] = assignment_number
+    out["document_number"] = document_number
+    return out
 
 @api_router.get("/surat-tugas")
 async def list_surat_tugas(user: dict = Depends(admin_required), search: Optional[str] = None, petugas_id: Optional[str] = None, status: Optional[str] = None):
@@ -651,6 +702,12 @@ async def update_st_status(lid: str, data: StatusUpdate, request: Request, user:
     if not letter:
         raise HTTPException(status_code=404, detail="Surat Tugas tidak ditemukan")
     await db.assignment_letters.update_one({"id": lid}, {"$set": {"status": data.status, "updated_at": now_iso()}})
+    # Keep the operational assignment in sync (assignment is the primary object)
+    if letter.get("assignment_id"):
+        await db.assignments.update_one(
+            {"id": letter["assignment_id"]},
+            {"$set": {"status": LETTER_TO_ASSIGNMENT_STATUS.get(data.status, "AKTIF"), "updated_at": now_iso()}},
+        )
     if data.status in ("dibatalkan", "kedaluwarsa"):
         await db.accounts.update_many(
             {"id": {"$in": letter.get("account_ids", [])}, "status": "DITUGASKAN"},
@@ -865,41 +922,58 @@ async def update_company(data: CompanyInput, request: Request, user: dict = Depe
 # ---------------------------------------------------------------------------
 @api_router.get("/my/tugas")
 async def my_tugas(user: dict = Depends(petugas_required)):
-    letters = await db.assignment_letters.find({"petugas_id": user["id"], "status": "aktif"}, {"_id": 0}).to_list(500)
+    # Officer tasks load from the ASSIGNMENTS collection (not the letters).
+    assignments = await db.assignments.find(
+        {"officer_id": user["id"], "status": ASSIGNMENT_ACTIVE}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
     result = []
-    for letter in letters:
-        sk = await db.power_of_attorneys.find_one({"id": letter["surat_kuasa_id"]}, {"_id": 0})
-        client_doc = await db.clients.find_one({"id": letter["client_id"]}, {"_id": 0})
-        for acc in await db.accounts.find({"id": {"$in": letter["account_ids"]}}, {"_id": 0}).to_list(1000):
-            rep = await db.field_reports.find_one({"account_id": acc["id"], "assignment_letter_id": letter["id"]}, {"_id": 0})
-            result.append({
-                "account": acc,
-                "letter_nomor": letter["nomor"],
-                "letter_id": letter["id"],
-                "surat_kuasa_nomor": sk["nomor"] if sk else "-",
-                "client_name": client_doc["nama_perusahaan"] if client_doc else "-",
-                "catatan_admin": letter.get("catatan", ""),
-                "sudah_dilaporkan": rep is not None,
-            })
+    for a in assignments:
+        acc = await db.accounts.find_one({"id": a["account_id"]}, {"_id": 0})
+        if not acc:
+            continue
+        sk = await db.power_of_attorneys.find_one({"id": a.get("power_of_attorney_id")}, {"_id": 0})
+        client_doc = await db.clients.find_one({"id": acc.get("client_id")}, {"_id": 0})
+        letter = await db.assignment_letters.find_one({"assignment_id": a["id"]}, {"_id": 0})
+        rep = await db.field_reports.find_one({"assignment_id": a["id"]}, {"_id": 0})
+        doc_no = (letter.get("document_number") or letter.get("nomor")) if letter else a.get("assignment_number")
+        result.append({
+            "account": acc,
+            "assignment_id": a["id"],
+            "letter_id": letter["id"] if letter else None,
+            "letter_nomor": doc_no,
+            "document_number": letter.get("document_number") if letter else None,
+            "assignment_number": a.get("assignment_number"),
+            "surat_kuasa_nomor": sk["nomor"] if sk else "-",
+            "client_name": client_doc["nama_perusahaan"] if client_doc else "-",
+            "catatan_admin": a.get("note", ""),
+            "sudah_dilaporkan": rep is not None,
+        })
     return result
 
 @api_router.get("/my/tugas/{account_id}")
 async def my_tugas_detail(account_id: str, user: dict = Depends(petugas_required)):
-    letter = await db.assignment_letters.find_one({"petugas_id": user["id"], "account_ids": account_id, "status": "aktif"}, {"_id": 0})
-    if not letter:
+    a = await db.assignments.find_one(
+        {"officer_id": user["id"], "account_id": account_id, "status": ASSIGNMENT_ACTIVE}, {"_id": 0})
+    if not a:
         raise HTTPException(status_code=404, detail="Tugas tidak ditemukan")
     acc = await db.accounts.find_one({"id": account_id}, {"_id": 0})
     if not acc:
         raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
-    sk = await db.power_of_attorneys.find_one({"id": letter["surat_kuasa_id"]}, {"_id": 0})
-    client_doc = await db.clients.find_one({"id": letter["client_id"]}, {"_id": 0})
-    rep = await db.field_reports.find_one({"account_id": account_id, "assignment_letter_id": letter["id"]}, {"_id": 0})
-    await log_audit(user, "Membuka tugas", "account", account_id)
+    sk = await db.power_of_attorneys.find_one({"id": a.get("power_of_attorney_id")}, {"_id": 0})
+    client_doc = await db.clients.find_one({"id": acc.get("client_id")}, {"_id": 0})
+    letter = await db.assignment_letters.find_one({"assignment_id": a["id"]}, {"_id": 0})
+    rep = await db.field_reports.find_one({"assignment_id": a["id"]}, {"_id": 0})
+    doc_no = (letter.get("document_number") or letter.get("nomor")) if letter else a.get("assignment_number")
+    await log_audit(user, "Membuka tugas", "assignment", a["id"])
     return {
-        "account": acc, "letter_nomor": letter["nomor"], "letter_id": letter["id"],
+        "account": acc,
+        "assignment_id": a["id"],
+        "letter_id": letter["id"] if letter else None,
+        "letter_nomor": doc_no,
+        "document_number": letter.get("document_number") if letter else None,
         "surat_kuasa_nomor": sk["nomor"] if sk else "-",
         "client_name": client_doc["nama_perusahaan"] if client_doc else "-",
-        "catatan_admin": letter.get("catatan", ""),
+        "catatan_admin": a.get("note", ""),
         "existing_report": rep,
     }
 
@@ -911,10 +985,14 @@ async def my_riwayat(user: dict = Depends(petugas_required), status: Optional[st
     reports = await db.field_reports.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     for r in reports:
         acc = await db.accounts.find_one({"id": r["account_id"]}, {"_id": 0})
-        letter = await db.assignment_letters.find_one({"id": r["assignment_letter_id"]}, {"_id": 0})
+        letter = None
+        if r.get("assignment_id"):
+            letter = await db.assignment_letters.find_one({"assignment_id": r["assignment_id"]}, {"_id": 0})
+        if not letter and r.get("assignment_letter_id"):
+            letter = await db.assignment_letters.find_one({"id": r["assignment_letter_id"]}, {"_id": 0})
         r["nama_debitur"] = acc["nama_debitur"] if acc else "-"
         r["nomor_polisi"] = acc["nomor_polisi"] if acc else "-"
-        r["letter_nomor"] = letter["nomor"] if letter else "-"
+        r["letter_nomor"] = (letter.get("document_number") or letter.get("nomor")) if letter else "-"
         r["photos"] = await db.report_photos.find({"report_id": r["id"]}, {"_id": 0}).to_list(10)
     return reports
 
@@ -937,24 +1015,33 @@ ACCOUNT_STATUS_MAP = {
 @api_router.post("/laporan")
 async def create_laporan(
     request: Request,
-    assignment_letter_id: str = Form(...),
     account_id: str = Form(...),
     status: str = Form(...),
     catatan: str = Form(...),
+    assignment_id: Optional[str] = Form(None),
+    assignment_letter_id: Optional[str] = Form(None),
     latitude: Optional[str] = Form(None),
     longitude: Optional[str] = Form(None),
     lokasi_alasan: Optional[str] = Form(None),
     photos: List[UploadFile] = File(default=[]),
     user: dict = Depends(petugas_required),
 ):
-    letter = await db.assignment_letters.find_one({"id": assignment_letter_id, "petugas_id": user["id"]})
-    if not letter:
-        raise HTTPException(status_code=404, detail="Surat Tugas tidak ditemukan")
-    if letter["status"] != "aktif":
-        raise HTTPException(status_code=400, detail="Surat Tugas tidak aktif")
-    if account_id not in letter.get("account_ids", []):
+    # Resolve the assignment (primary relation). Accept legacy assignment_letter_id for compatibility.
+    assignment = None
+    if assignment_id:
+        assignment = await db.assignments.find_one({"id": assignment_id, "officer_id": user["id"]})
+    if not assignment and assignment_letter_id:
+        letter_tmp = await db.assignment_letters.find_one({"id": assignment_letter_id, "petugas_id": user["id"]})
+        if letter_tmp and letter_tmp.get("assignment_id"):
+            assignment = await db.assignments.find_one({"id": letter_tmp["assignment_id"], "officer_id": user["id"]})
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Penugasan tidak ditemukan")
+    if assignment.get("status") != ASSIGNMENT_ACTIVE:
+        raise HTTPException(status_code=400, detail="Penugasan tidak aktif")
+    if assignment.get("account_id") != account_id:
         raise HTTPException(status_code=403, detail="Akun ini bukan bagian dari tugas Anda")
-    existing = await db.field_reports.find_one({"account_id": account_id, "assignment_letter_id": assignment_letter_id, "status": "SUBMITTED"})
+    letter = await db.assignment_letters.find_one({"assignment_id": assignment["id"]}, {"_id": 0})
+    existing = await db.field_reports.find_one({"assignment_id": assignment["id"], "report_status": "SUBMITTED"})
     if existing:
         raise HTTPException(status_code=400, detail="Laporan untuk tugas ini sudah dikirim")
     if len(catatan.strip()) < 10:
@@ -984,7 +1071,9 @@ async def create_laporan(
 
     report = {
         "id": report_id, "company_id": user["company_id"], "petugas_id": user["id"],
-        "assignment_letter_id": assignment_letter_id, "account_id": account_id,
+        "assignment_id": assignment["id"],
+        "assignment_letter_id": letter["id"] if letter else assignment_letter_id,
+        "account_id": account_id,
         "status": status, "catatan": catatan,
         "latitude": float(latitude) if latitude else None,
         "longitude": float(longitude) if longitude else None,
@@ -1123,6 +1212,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def migrate_assignments_non_destructive():
+    """Non-destructive, idempotent. Ensures every legacy assignment_letter has a
+    matching single-unit assignment, and backfills field_reports.assignment_id.
+    Safe to run repeatedly; does not delete or rename anything."""
+    migrated_asg = 0
+    migrated_rep = 0
+    # 1) Ensure each letter has an assignment linked by assignment_id
+    letters = await db.assignment_letters.find({}, {"_id": 0}).to_list(5000)
+    for letter in letters:
+        account_ids = letter.get("account_ids") or ([letter["account_id"]] if letter.get("account_id") else [])
+        if not account_ids:
+            continue
+        asg_id = letter.get("assignment_id")
+        existing = await db.assignments.find_one({"id": asg_id}) if asg_id else None
+        if existing:
+            # ensure new-schema fields exist on legacy assignment docs
+            patch = {}
+            if "officer_id" not in existing and existing.get("petugas_id"):
+                patch["officer_id"] = existing["petugas_id"]
+            if "account_id" not in existing:
+                patch["account_id"] = account_ids[0]
+            if "power_of_attorney_id" not in existing and letter.get("surat_kuasa_id"):
+                patch["power_of_attorney_id"] = letter["surat_kuasa_id"]
+            if "status" not in existing:
+                patch["status"] = LETTER_TO_ASSIGNMENT_STATUS.get(letter.get("status", "aktif"), "AKTIF")
+            if "assignment_number" not in existing:
+                patch["assignment_number"] = letter.get("nomor") or letter.get("document_number")
+            if patch:
+                patch["updated_at"] = now_iso()
+                await db.assignments.update_one({"id": existing["id"]}, {"$set": patch})
+            continue
+        # no assignment: create one from letter (first account only -> 1:1)
+        new_asg_id = asg_id or new_id()
+        await db.assignments.insert_one({
+            "id": new_asg_id, "company_id": letter["company_id"],
+            "account_id": account_ids[0], "officer_id": letter.get("petugas_id"),
+            "power_of_attorney_id": letter.get("surat_kuasa_id"), "client_id": letter.get("client_id"),
+            "status": LETTER_TO_ASSIGNMENT_STATUS.get(letter.get("status", "aktif"), "AKTIF"),
+            "valid_from": letter.get("tanggal"), "valid_until": letter.get("masa_berlaku"),
+            "note": letter.get("catatan", ""),
+            "assignment_number": letter.get("nomor") or letter.get("document_number"),
+            "assignment_letter_id": letter["id"],
+            "created_by": letter.get("generated_by", ""),
+            "created_at": letter.get("created_at", now_iso()), "updated_at": now_iso(),
+        })
+        if letter.get("assignment_id") != new_asg_id:
+            await db.assignment_letters.update_one({"id": letter["id"]}, {"$set": {"assignment_id": new_asg_id}})
+        migrated_asg += 1
+    # 2) Backfill field_reports.assignment_id from legacy assignment_letter_id
+    reports = await db.field_reports.find({"assignment_id": {"$exists": False}}, {"_id": 0}).to_list(5000)
+    for r in reports:
+        if not r.get("assignment_letter_id"):
+            continue
+        letter = await db.assignment_letters.find_one({"id": r["assignment_letter_id"]}, {"_id": 0})
+        if letter and letter.get("assignment_id"):
+            await db.field_reports.update_one({"id": r["id"]}, {"$set": {"assignment_id": letter["assignment_id"]}})
+            migrated_rep += 1
+    if migrated_asg or migrated_rep:
+        logger.info(f"Assignment migration: {migrated_asg} assignments, {migrated_rep} reports backfilled")
+
+
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
@@ -1135,6 +1285,10 @@ async def startup():
         logger.error(f"Storage init failed: {e}")
     from seed import seed_all
     await seed_all(db)
+    try:
+        await migrate_assignments_non_destructive()
+    except Exception as e:
+        logger.error(f"Assignment migration failed: {e}")
 
 @app.on_event("shutdown")
 async def shutdown():

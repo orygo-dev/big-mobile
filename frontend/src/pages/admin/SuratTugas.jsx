@@ -75,10 +75,10 @@ export default function SuratTugas() {
               <tbody>
                 {items.map((l) => (
                   <tr key={l.id} className="border-t border-slate-50 hover:bg-slate-50/50" data-testid={`st-row-${l.id}`}>
-                    <td className="px-5 py-3 font-mono text-xs font-semibold text-slate-800">{l.nomor}</td>
+                    <td className="px-5 py-3 font-mono text-xs font-semibold text-slate-800">{l.document_number || l.nomor}</td>
                     <td className="px-3 py-3 text-slate-700">{l.petugas_name}</td>
                     <td className="px-3 py-3 text-slate-600">{l.client_name}</td>
-                    <td className="px-3 py-3 text-slate-600">{l.accounts?.length || 0}</td>
+                    <td className="px-3 py-3 text-slate-600">{l.accounts?.[0]?.nomor_polisi || l.accounts?.[0]?.nama_debitur || "-"}</td>
                     <td className="px-3 py-3 text-slate-500">{formatDate(l.tanggal)}</td>
                     <td className="px-3 py-3"><StatusBadge map={LETTER_STATUS} value={l.status} /></td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">

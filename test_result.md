@@ -101,3 +101,119 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Refactor the Penugasan/Assignment workflow to enforce 1 Assignment = 1 Unit = 1 Officer = 1 Assignment Letter. Assignments become the main operational collection; assignment_letters are the official document generated from them. Block a second ACTIVE assignment for the same unit. Officer tasks and field reports must be driven by assignment_id."
+
+backend:
+  - task: "POST /api/penugasan - single unit single officer assignment with auto letter"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Rewrote create_penugasan: input now {petugas_id, account_id, valid_from, valid_until, catatan}. Creates ONE assignment (fields: company_id, account_id, officer_id, power_of_attorney_id, client_id, status=AKTIF, valid_from, valid_until, note, assignment_number, assignment_letter_id, created_by) and ONE assignment_letter (auto-ACTIVE with document_number, generate_code, register_number, snapshot). Blocks if an AKTIF assignment already exists for the account (HTTP 400). Requires Surat Kuasa aktif. Returns letter + assignment_id + assignment_number + document_number."
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED: POST /api/penugasan creates single assignment + auto-finalized letter. Response includes id (letter_id), assignment_id, assignment_number, document_number. Letter appears in GET /api/surat-tugas list. Document is auto-finalized (is_finalized=true, document_status=ACTIVE, document_number present). Account status changes from BELUM_DITUGASKAN to DITUGASKAN. All fields correctly populated."
+  - task: "Duplicate ACTIVE assignment prevention for same unit"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Second POST /api/penugasan for the same account while an AKTIF assignment exists must return 400. After the first assignment is cancelled (status dibatalkan -> assignment DIBATALKAN, account back to BELUM_DITUGASKAN) a new assignment should be allowed."
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED: Duplicate assignment correctly blocked with HTTP 400 and message 'Unit ini masih memiliki penugasan AKTIF. Selesaikan atau batalkan penugasan lama terlebih dahulu.' After cancelling assignment (PATCH /api/surat-tugas/{id}/status with status=dibatalkan), account status resets to BELUM_DITUGASKAN and reassignment is allowed."
+  - task: "Officer task APIs load from assignments (GET /api/my/tugas, /api/my/tugas/{account_id})"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "my_tugas now queries db.assignments {officer_id, status=AKTIF}; returns account, assignment_id, letter_id, letter_nomor(=document_number), surat_kuasa_nomor, client_name, catatan_admin(=note), sudah_dilaporkan. Task must appear ONLY for the selected officer, not others."
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED: GET /api/my/tugas returns tasks for assigned officer only. Response includes account, assignment_id, letter_id, letter_nomor, document_number, assignment_number, surat_kuasa_nomor, client_name, catatan_admin, sudah_dilaporkan. Task isolation confirmed - assigned unit visible to Petugas A, NOT visible to Petugas B. GET /api/my/tugas/{account_id} returns task detail with assignment_id and existing_report=null before report submission."
+  - task: "POST /api/laporan references assignment_id"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "create_laporan now accepts assignment_id (primary) OR legacy assignment_letter_id. Validates assignment belongs to officer and is AKTIF and account matches. Stores report with assignment_id + assignment_letter_id (compat). Duplicate submitted report for same assignment returns 400."
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED: POST /api/laporan (multipart/form-data) accepts assignment_id, account_id, status=TIDAK_DITEMUKAN, catatan, lokasi_alasan. Report created successfully with correct assignment_id and account_id. sudah_dilaporkan flag correctly set to true in GET /api/my/tugas after report submission. Duplicate report submission correctly blocked with HTTP 400 and message 'Laporan untuk tugas ini sudah dikirim'."
+  - task: "update_st_status syncs assignment status + non-destructive migration"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "PATCH /api/surat-tugas/{id}/status now also updates linked assignment status (aktif->AKTIF, selesai->SELESAI, dibatalkan->DIBATALKAN, kedaluwarsa->KEDALUWARSA) and resets account on cancel/expire. Added idempotent startup migration to backfill assignments from legacy letters and assignment_id into old reports (DB currently has 0 legacy records)."
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED: PATCH /api/surat-tugas/{id}/status with status=dibatalkan successfully cancels assignment. Account status correctly resets from DITUGASKAN to BELUM_DITUGASKAN (for accounts without submitted reports). Reassignment after cancellation works correctly. Note: Accounts with submitted reports maintain their report status (e.g., TIDAK_DITEMUKAN) after cancellation, which is correct business logic."
+
+frontend:
+  - task: "Penugasan dialog single unit + single officer, button 'Buat Penugasan'"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/PenugasanDialog.jsx, frontend/src/pages/admin/Penugasan.jsx, frontend/src/pages/admin/AkunUnit.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Dialog selects exactly one Unit (or preselected from Kontrak & Unit per-row 'Tugaskan'), one Petugas, valid_from, valid_until, optional note. Submit button says 'Buat Penugasan'. On success shows Penugasan ID + document_number + 'Lihat Surat Penugasan' button. Removed multi-select bulk assignment. Not tested via automation yet (awaiting user go-ahead for frontend tests)."
+  - task: "Surat Penugasan doc page is archive-only (no finalize create action), shows document_number"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/admin/SuratPenugasanDoc.jsx, frontend/src/pages/admin/SuratTugas.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Removed Finalisasi primary action + preview note (docs auto-finalized at creation). SuratTugas list shows document_number and the single unit. BuatLaporan now submits assignment_id."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.2"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: "Please test ONLY the assignment workflow (backend). Admin: admin@demo.com/admin123. Petugas: petugas@demo.com/petugas123. Flow: (1) As admin GET /api/akun?status=BELUM_DITUGASKAN to get a unit id. (2) POST /api/penugasan {petugas_id, account_id, valid_from, valid_until, catatan} with petugas_id of petugas@demo.com -> expect ONE assignment + ONE assignment_letter auto-created (document_status ACTIVE), response has assignment_id, assignment_number, document_number. (3) Verify a SECOND POST /api/penugasan for the SAME account while active returns 400. (4) As petugas GET /api/my/tugas -> the assigned unit appears; confirm a DIFFERENT petugas (siti@demo.com/petugas123) does NOT see it. (5) GET /api/my/tugas/{account_id} returns assignment_id. (6) POST /api/laporan (multipart) with assignment_id + account_id + status=TIDAK_DITEMUKAN + catatan>=10 chars + lokasi_alasan -> report created and references assignment_id. (7) After cancelling via PATCH /api/surat-tugas/{letter_id}/status {status:dibatalkan}, the account returns to BELUM_DITUGASKAN and a new assignment for it is allowed. Do NOT test Dashboard, Surat Kuasa, BASTK content, or Nasabah. Backend testing only."
+    - agent: "testing"
+      message: "✅ ALL BACKEND TESTS PASSED (18/18 - 100% success rate). Comprehensive testing completed for the refactored Assignment workflow enforcing 1 Assignment = 1 Unit = 1 Officer = 1 Letter business rule. All high-priority tasks verified and working correctly. Test scenarios covered: (1) Login for admin and both petugas ✅ (2) Get available unassigned units ✅ (3) Create assignment with auto-finalized letter ✅ (4) Duplicate assignment prevention ✅ (5) Officer task visibility and isolation ✅ (6) Task detail retrieval ✅ (7) Report submission with assignment_id ✅ (8) Cancel and reassign workflow ✅. No critical issues found. Backend implementation is production-ready."
