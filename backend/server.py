@@ -140,6 +140,19 @@ class ClientInput(BaseModel):
     email: Optional[str] = ""
     nama_pic: Optional[str] = ""
     nomor_pic: Optional[str] = ""
+    logo: Optional[str] = ""
+    status: str = "aktif"
+
+class NasabahInput(BaseModel):
+    nama: str
+    nik: Optional[str] = ""
+    telepon: Optional[str] = ""
+    alamat: Optional[str] = ""
+    provinsi: Optional[str] = ""
+    kabupaten: Optional[str] = ""
+    kecamatan: Optional[str] = ""
+    kelurahan: Optional[str] = ""
+    client_id: str
     status: str = "aktif"
 
 class SuratKuasaInput(BaseModel):
@@ -174,6 +187,7 @@ class AccountInput(BaseModel):
     client_id: str
     surat_kuasa_id: str
     keterangan: Optional[str] = ""
+    debtor_id: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -405,7 +419,38 @@ async def enrich_account(acc: dict) -> dict:
     sk = await db.power_of_attorneys.find_one({"id": acc["surat_kuasa_id"]}, {"_id": 0})
     acc["client_name"] = client_doc["nama_perusahaan"] if client_doc else "-"
     acc["surat_kuasa_nomor"] = sk["nomor"] if sk else "-"
+    letter = await db.assignment_letters.find_one(
+        {"account_ids": acc["id"], "status": "aktif"}, {"_id": 0})
+    if letter:
+        petugas = await db.users.find_one({"id": letter["petugas_id"]}, {"_id": 0})
+        acc["petugas_name"] = petugas["name"] if petugas else "-"
+        acc["letter_nomor"] = letter.get("nomor")
+    else:
+        acc["petugas_name"] = None
+        acc["letter_nomor"] = None
     return acc
+
+
+async def find_or_create_debtor(company_id: str, client_id: str, data: dict) -> str:
+    nik = (data.get("nik") or "").strip()
+    name = (data.get("nama_debitur") or data.get("nama") or "").strip()
+    q = {"company_id": company_id, "client_id": client_id}
+    q["nik"] = nik if nik else {"$in": ["", None]}
+    if not nik:
+        q["nama"] = name
+    existing = await db.debtors.find_one(q)
+    if existing:
+        return existing["id"]
+    did = new_id()
+    await db.debtors.insert_one({
+        "id": did, "company_id": company_id, "client_id": client_id,
+        "nama": name, "nik": nik, "telepon": data.get("telepon", ""),
+        "alamat": data.get("alamat", ""), "provinsi": data.get("provinsi", ""),
+        "kabupaten": data.get("kabupaten", ""), "kecamatan": data.get("kecamatan", ""),
+        "kelurahan": data.get("kelurahan", ""), "status": "aktif",
+        "created_at": now_iso(), "updated_at": now_iso(),
+    })
+    return did
 
 @api_router.get("/akun")
 async def list_accounts(
