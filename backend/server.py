@@ -248,8 +248,10 @@ async def dashboard_stats(user: dict = Depends(admin_required)):
     ditemukan = await db.accounts.count_documents({**base, "status": "UNIT_DITEMUKAN"})
     tidak_ditemukan = await db.accounts.count_documents({**base, "status": "TIDAK_DITEMUKAN"})
     belum_dikerjakan = await db.accounts.count_documents({**base, "status": "DITUGASKAN"})
-    today = datetime.now(timezone.utc).date().isoformat()
-    laporan_hari_ini = await db.field_reports.count_documents({**base, "created_at": {"$gte": today}})
+    today_d = datetime.now(timezone.utc).date()
+    today = today_d.isoformat()
+    tomorrow = (today_d + timedelta(days=1)).isoformat()
+    laporan_hari_ini = await db.field_reports.count_documents({**base, "created_at": {"$gte": today, "$lt": tomorrow}})
     return {
         "surat_kuasa_aktif": sk_aktif,
         "total_akun": total_akun,
@@ -778,7 +780,11 @@ async def list_laporan(
     if status:
         q["status"] = status
     if tanggal:
-        q["created_at"] = {"$gte": tanggal, "$lt": tanggal + "T99"}
+        try:
+            nextday = (datetime.fromisoformat(tanggal).date() + timedelta(days=1)).isoformat()
+        except ValueError:
+            nextday = tanggal + "T99"
+        q["created_at"] = {"$gte": tanggal, "$lt": nextday}
     reports = await db.field_reports.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
     result = []
     for r in reports:
