@@ -1,21 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import api, { errMsg } from "@/lib/api";
+import { useBranding } from "@/context/BrandingContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { formatDateTime } from "@/lib/constants";
-import { Building2, ScrollText, Loader2, Pencil } from "lucide-react";
+import { Building2, ScrollText, Loader2, Pencil, Upload, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Pengaturan() {
+  const { reload: reloadBranding } = useBranding();
   const [company, setCompany] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const logoRef = useRef(null);
 
   const load = () => {
     api.get("/company").then(({ data }) => setCompany(data)).catch(() => {});
@@ -25,7 +29,8 @@ export default function Pengaturan() {
 
   const openEdit = () => {
     setForm({
-      nama: company.nama || "", alamat: company.alamat || "", telepon: company.telepon || "",
+      nama: company.nama || "", app_name: company.app_name || "FieldCollector",
+      alamat: company.alamat || "", telepon: company.telepon || "",
       email: company.email || "", city: company.city || "", director_name: company.director_name || "",
       director_position: company.director_position || "DIREKTUR", company_code: company.company_code || "",
       number_format: company.number_format || "{sequence}/{company_code}/{month_name}/{year}", logo: company.logo || "",
@@ -35,8 +40,22 @@ export default function Pengaturan() {
 
   const save = async () => {
     setSaving(true);
-    try { const { data } = await api.put("/company", form); setCompany(data); toast.success("Profil perusahaan diperbarui"); setOpen(false); }
+    try { const { data } = await api.put("/company", form); setCompany(data); reloadBranding(); toast.success("Profil perusahaan diperbarui"); setOpen(false); }
     catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
+  };
+
+  const uploadLogo = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type !== "image/png") { toast.error("Logo harus PNG transparan"); return; }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/company/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setCompany(data); reloadBranding(); toast.success("Logo perusahaan diperbarui");
+    } catch (err) { toast.error(errMsg(err)); } finally { setUploading(false); }
   };
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -45,7 +64,25 @@ export default function Pengaturan() {
     <div className="space-y-5 animate-fade-in max-w-4xl">
       <div>
         <h1 className="font-heading text-2xl font-bold text-slate-900">Pengaturan</h1>
-        <p className="text-sm text-slate-500 mt-1">Informasi perusahaan, format nomor surat, dan log aktivitas.</p>
+        <p className="text-sm text-slate-500 mt-1">Identitas aplikasi, informasi perusahaan, format nomor surat, dan log aktivitas.</p>
+      </div>
+
+      {/* Branding: logo + nama aplikasi */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="flex items-center gap-2 mb-4"><ImageIcon className="w-5 h-5 text-blue-600" /><h2 className="font-heading font-semibold text-slate-800">Identitas Aplikasi</h2></div>
+        <div className="flex items-center gap-5 flex-wrap">
+          <div className="w-28 h-28 rounded-2xl bg-slate-900 flex items-center justify-center overflow-hidden" data-testid="logo-preview">
+            {company?.logo ? <img src={company.logo} alt="Logo" className="w-full h-full object-contain p-2" /> : <span className="text-slate-500 text-xs">Belum ada logo</span>}
+          </div>
+          <div>
+            <p className="text-sm text-slate-700 font-medium">Nama Aplikasi: <span className="font-semibold">{company?.app_name || "FieldCollector"}</span></p>
+            <p className="text-xs text-slate-400 mt-1 mb-3">Unggah logo PNG transparan (maks 2MB). Logo tampil di sidebar, login, dan kop surat.</p>
+            <input ref={logoRef} type="file" accept="image/png" onChange={uploadLogo} className="hidden" data-testid="logo-file-input" />
+            <Button onClick={() => logoRef.current?.click()} disabled={uploading} variant="outline" className="rounded-xl" data-testid="logo-upload-button">
+              {uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />} Unggah Logo PNG
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 p-5">
@@ -55,13 +92,13 @@ export default function Pengaturan() {
         </div>
         {company ? (
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            <div><dt className="text-xs text-slate-400">Nama</dt><dd className="font-medium text-slate-700">{company.nama}</dd></div>
+            <div><dt className="text-xs text-slate-400">Nama Aplikasi</dt><dd className="font-medium text-slate-700">{company.app_name || "FieldCollector"}</dd></div>
+            <div><dt className="text-xs text-slate-400">Nama Perusahaan</dt><dd className="font-medium text-slate-700">{company.nama}</dd></div>
             <div><dt className="text-xs text-slate-400">Kota/Kedudukan</dt><dd className="text-slate-700">{company.city || "-"}</dd></div>
-            <div className="sm:col-span-2"><dt className="text-xs text-slate-400">Alamat</dt><dd className="text-slate-700">{company.alamat}</dd></div>
             <div><dt className="text-xs text-slate-400">Telepon</dt><dd className="text-slate-700">{company.telepon}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-xs text-slate-400">Alamat</dt><dd className="text-slate-700">{company.alamat}</dd></div>
             <div><dt className="text-xs text-slate-400">Email</dt><dd className="text-slate-700">{company.email}</dd></div>
             <div><dt className="text-xs text-slate-400">Nama Direktur</dt><dd className="text-slate-700">{company.director_name || "-"}</dd></div>
-            <div><dt className="text-xs text-slate-400">Jabatan</dt><dd className="text-slate-700">{company.director_position || "-"}</dd></div>
             <div><dt className="text-xs text-slate-400">Kode Perusahaan</dt><dd className="font-mono text-slate-700">{company.company_code || "-"}</dd></div>
             <div><dt className="text-xs text-slate-400">Format Nomor Surat</dt><dd className="font-mono text-xs text-slate-700">{company.number_format || "-"}</dd></div>
           </dl>
@@ -101,6 +138,7 @@ export default function Pengaturan() {
           <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" data-testid="company-dialog">
             <DialogHeader><DialogTitle className="font-heading">Edit Profil Perusahaan</DialogTitle></DialogHeader>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+              <div className="sm:col-span-2"><Label>Nama Aplikasi</Label><Input value={form.app_name} onChange={set("app_name")} placeholder="FieldCollector" className="mt-1.5 rounded-xl" data-testid="company-appname-input" /></div>
               <div className="sm:col-span-2"><Label>Nama Perusahaan</Label><Input value={form.nama} onChange={set("nama")} className="mt-1.5 rounded-xl" data-testid="company-nama-input" /></div>
               <div className="sm:col-span-2"><Label>Alamat</Label><Textarea value={form.alamat} onChange={set("alamat")} className="mt-1.5 rounded-xl" /></div>
               <div><Label>Kota/Kedudukan</Label><Input value={form.city} onChange={set("city")} className="mt-1.5 rounded-xl" data-testid="company-city-input" /></div>

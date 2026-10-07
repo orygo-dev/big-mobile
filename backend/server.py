@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta
 import logging
 import uuid
 import io
+import base64
 import jwt
 import bcrypt
 import qrcode
@@ -214,6 +215,7 @@ class CompanyInput(BaseModel):
     company_code: Optional[str] = ""
     number_format: Optional[str] = "{sequence}/{company_code}/{month_name}/{year}"
     logo: Optional[str] = ""
+    app_name: Optional[str] = "FieldCollector"
 
 class PenugasanInput(BaseModel):
     petugas_id: str
@@ -429,6 +431,7 @@ async def enrich_account(acc: dict) -> dict:
     sk = await db.power_of_attorneys.find_one({"id": acc["surat_kuasa_id"]}, {"_id": 0})
     acc["client_name"] = client_doc["nama_perusahaan"] if client_doc else "-"
     acc["surat_kuasa_nomor"] = sk["nomor"] if sk else "-"
+    acc["surat_kuasa_file"] = sk.get("file_url", "") if sk else ""
     letter = await db.assignment_letters.find_one(
         {"account_ids": acc["id"], "status": "aktif"}, {"_id": 0})
     if letter:
@@ -1177,6 +1180,54 @@ async def get_company(user: dict = Depends(get_current_user)):
     c = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
     return c
 
+@api_router.get("/branding")
+async def get_branding():
+    """Public branding (app name + logo) for the login page and shell."""
+    c = await db.companies.find_one({}, {"_id": 0}) or {}
+    return {
+        "app_name": c.get("app_name") or "FieldCollector",
+        "logo": c.get("logo") or "",
+        "company_name": c.get("nama") or "",
+    }
+
+@api_router.post("/company/logo")
+async def upload_company_logo(file: UploadFile = File(...), user: dict = Depends(admin_required)):
+    if file.content_type not in ("image/png",):
+        raise HTTPException(status_code=400, detail="Logo harus file PNG transparan")
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Ukuran logo maksimal 2MB")
+    if not content.startswith(b"\x89PNG"):
+        raise HTTPException(status_code=400, detail="File bukan PNG yang valid")
+    data_url = "data:image/png;base64," + base64.b64encode(content).decode("ascii")
+    await db.companies.update_one({"id": user["company_id"]}, {"$set": {"logo": data_url, "updated_at": now_iso()}})
+    await log_audit(user, "Mengunggah logo perusahaan", "company", user["company_id"])
+    return await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
+
+@api_router.post("/surat-kuasa/{sk_id}/file")
+async def upload_sk_file(sk_id: str, file: UploadFile = File(...), user: dict = Depends(admin_required)):
+    sk = await db.power_of_attorneys.find_one({"id": sk_id, "company_id": user["company_id"]})
+    if not sk:
+        raise HTTPException(status_code=404, detail="Surat Kuasa tidak ditemukan")
+    if file.content_type not in ("application/pdf",):
+        raise HTTPException(status_code=400, detail="File Surat Kuasa harus PDF")
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Ukuran file maksimal 8MB")
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="File bukan PDF yang valid")
+    obj_path = f"{APP_NAME}/companies/{user['company_id']}/surat-kuasa/{sk_id}/{new_id()}.pdf"
+    result = put_object(obj_path, content, "application/pdf")
+    file_url = f"/api/files/{result['path']}"
+    await db.documents.insert_one({
+        "id": new_id(), "company_id": user["company_id"], "kind": "surat_kuasa",
+        "ref_id": sk_id, "storage_path": result["path"], "url": file_url,
+        "filename": file.filename, "created_at": now_iso(),
+    })
+    await db.power_of_attorneys.update_one({"id": sk_id}, {"$set": {"file_url": file_url, "updated_at": now_iso()}})
+    await log_audit(user, "Mengunggah dokumen Surat Kuasa", "surat_kuasa", sk_id)
+    return {"file_url": file_url}
+
 # ---------------------------------------------------------------------------
 # File serving (object storage proxy). Supports query-param auth for <img>.
 # ---------------------------------------------------------------------------
@@ -1194,6 +1245,8 @@ async def serve_file(path: str, authorization: str = Header(None), auth: str = Q
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token tidak valid")
     record = await db.report_photos.find_one({"storage_path": path})
+    if not record:
+        record = await db.documents.find_one({"storage_path": path})
     if not record:
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
     data, content_type = get_object(path)

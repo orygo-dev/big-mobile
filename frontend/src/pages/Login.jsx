@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { useBranding } from "@/context/BrandingContext";
 import { errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Login() {
   const { login } = useAuth();
+  const { appName, logo } = useBranding();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,15 +40,11 @@ export default function Login() {
       <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 30%, #1E3A8A 0, transparent 40%), radial-gradient(circle at 80% 70%, #2563EB 0, transparent 40%)" }} />
       <div className="relative w-full max-w-md">
         <div className="flex items-center justify-center mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="font-heading text-2xl font-extrabold text-white tracking-tight">FieldCollector</h1>
-              <p className="text-xs text-slate-400 font-mono uppercase tracking-wider">Field Operations</p>
-            </div>
-          </div>
+          {logo ? (
+            <img src={logo} alt={appName} className="h-20 w-auto max-w-[260px] object-contain" data-testid="login-logo" />
+          ) : (
+            <h1 className="font-heading text-3xl font-extrabold text-white tracking-tight">{appName}</h1>
+          )}
         </div>
 
         <div className="bg-white rounded-3xl shadow-2xl p-7 animate-fade-in">

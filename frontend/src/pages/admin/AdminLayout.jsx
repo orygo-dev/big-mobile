@@ -1,9 +1,10 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useBranding } from "@/context/BrandingContext";
 import {
   LayoutDashboard, Building2, FileText, Car, ClipboardList,
-  FileCheck2, FileSearch, Users, Settings, LogOut, Shield, Menu, X,
+  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -44,6 +45,7 @@ const NAV_GROUPS = [
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
+  const { appName, logo } = useBranding();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -51,14 +53,12 @@ export default function AdminLayout() {
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      <div className="px-5 py-5 flex items-center gap-3 border-b border-slate-800">
-        <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-          <Shield className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <h1 className="font-heading font-bold text-white text-lg leading-none">FieldCollector</h1>
-          <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider mt-1">Admin Panel</p>
-        </div>
+      <div className="px-5 py-5 flex items-center justify-center border-b border-slate-800 min-h-[76px]">
+        {logo ? (
+          <img src={logo} alt={appName} className="h-12 w-auto max-w-[200px] object-contain" data-testid="sidebar-logo" />
+        ) : (
+          <h1 className="font-heading font-bold text-white text-xl tracking-tight">{appName}</h1>
+        )}
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
         {NAV_GROUPS.map((group, gi) => (

@@ -1,3 +1,37 @@
+
+## === ENHANCEMENT ROUND (branding + SK document upload + add unit in Kontrak & Unit) ===
+backend_new:
+  - task: "GET /api/branding (public) + POST /api/company/logo (PNG) + app_name in company"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "GET /api/branding is PUBLIC (no auth) returns {app_name, logo, company_name}. POST /api/company/logo (admin, multipart PNG, max 2MB, validates %PNG magic) stores logo as base64 data URL in company.logo. CompanyInput now has app_name; PUT /api/company persists it."
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED (6/6 tests passed): (1) GET /api/branding (public, no auth) returns 200 with app_name='FieldCollector', logo='', company_name='PT Garda Koleksi Nusantara'. (2) POST /api/company/logo with valid 1x1 PNG (proper magic bytes) returns 200, company.logo starts with 'data:image/png;base64,'. (3) GET /api/branding after upload shows logo correctly. (4) POST /api/company/logo with text/plain correctly rejected with 400. (5) PUT /api/company with app_name='MyBrand' returns 200, persisted correctly. (6) GET /api/branding reflects app_name='MyBrand'. All branding and logo upload features working correctly."
+  - task: "POST /api/surat-kuasa/{sk_id}/file (PDF upload) + serve via /api/files"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Admin uploads PDF (validates application/pdf + %PDF magic, max 8MB) to object storage, inserts db.documents record, sets power_of_attorneys.file_url=/api/files/{path}. serve_file now also authorizes paths found in db.documents. enrich_account adds surat_kuasa_file so Kontrak & Unit list shows the doc link. GET /api/akun returns petugas_name + surat_kuasa_file."
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED (8/8 tests passed): (1) GET /api/surat-kuasa returns list of SK records. (2) POST /api/surat-kuasa/{sk_id}/file with valid PDF (proper %PDF magic bytes) returns 200 with file_url='/api/files/fieldcollector/companies/.../xxx.pdf'. (3) POST with text/plain correctly rejected with 400. (4) POST to non-existent SK ID correctly returns 404. (5) GET /api/files/{path}?auth=token returns 200 with content-type application/pdf and file content (329 bytes). (6) GET /api/files/{path} without auth correctly returns 401. (7) GET /api/akun?limit=5 returns enriched accounts with surat_kuasa_file and petugas_name fields present. All PDF upload, file serving, and account enrichment features working correctly."
+
+agent_communication_new:
+    - agent: "main"
+      message: "Please test ONLY these NEW backend endpoints (admin: admin@demo.com/admin123). (1) GET /api/branding WITHOUT auth header -> 200 with app_name (default FieldCollector) and logo (string). (2) POST /api/company/logo as admin, multipart field 'file' with a small valid PNG (bytes starting with 0x89 PNG) -> 200, returned company.logo starts with 'data:image/png;base64,'. Then GET /api/branding -> logo now non-empty. Posting a non-PNG (e.g. text/plain) -> 400. (3) PUT /api/company with app_name='MyBrand' and existing required fields (nama etc) -> 200 and GET /api/company shows app_name='MyBrand'; GET /api/branding app_name='MyBrand'. (4) Pick a surat_kuasa id from GET /api/surat-kuasa. POST /api/surat-kuasa/{id}/file multipart 'file' with a tiny valid PDF (bytes starting with '%PDF-1.4') content_type application/pdf -> 200 returns {file_url} like /api/files/...  Non-PDF -> 400. (5) GET /api/files/{path}?auth=<admin_token> for the returned path (strip leading /api/files/) -> 200 and content-type application/pdf. Without token -> 401. (6) GET /api/akun?limit=5 -> items include surat_kuasa_file and petugas_name fields. Do NOT retest the assignment workflow unless needed. Report any 500s."
+    - agent: "testing"
+      message: "✅ ALL NEW BACKEND ENDPOINTS TESTED AND WORKING (14/14 tests passed - 100% success rate). Comprehensive testing completed for branding and file upload enhancement features. Test coverage: (1) Public branding endpoint ✅ (2) Logo upload with PNG validation ✅ (3) Logo rejection for non-PNG files ✅ (4) App name update and persistence ✅ (5) SK PDF upload with validation ✅ (6) PDF rejection for non-PDF files ✅ (7) 404 for non-existent SK ✅ (8) Authenticated file serving ✅ (9) 401 for unauthenticated file access ✅ (10) Enriched account list with surat_kuasa_file and petugas_name ✅. All positive and negative test scenarios passed. No critical issues found. Backend implementation is production-ready."
+
 #====================================================================================================
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
@@ -202,8 +236,8 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "1.2"
-  test_sequence: 2
+  version: "1.3"
+  test_sequence: 3
   run_ui: false
 
 test_plan:

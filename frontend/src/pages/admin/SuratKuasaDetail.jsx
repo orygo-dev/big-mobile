@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import api, { errMsg } from "@/lib/api";
+import api, { errMsg, fileUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,47 +10,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { SK_STATUS, ACCOUNT_STATUS, formatDate } from "@/lib/constants";
 import EmptyState from "@/components/EmptyState";
-import { ArrowLeft, Plus, Loader2, Car, Pencil } from "lucide-react";
+import { ArrowLeft, Loader2, Car, Pencil, FileText, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
-
-const EMPTY_ACC = {
-  nomor_kontrak: "", nama_debitur: "", nik: "", telepon: "", alamat: "",
-  provinsi: "", kabupaten: "", kecamatan: "", kelurahan: "", nomor_polisi: "",
-  jenis_kendaraan: "", merk: "", model: "", tahun: "", warna: "",
-  nomor_rangka: "", nomor_mesin: "", stnk_name: "", keterangan: "", latitude: "", longitude: "",
-};
 
 export default function SuratKuasaDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [sk, setSk] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [accOpen, setAccOpen] = useState(false);
-  const [form, setForm] = useState(EMPTY_ACC);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [skForm, setSkForm] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const fileRef = useRef(null);
 
   const load = useCallback(() => {
     setLoading(true);
     api.get(`/surat-kuasa/${id}`).then(({ data }) => setSk(data)).catch((e) => toast.error(errMsg(e))).finally(() => setLoading(false));
   }, [id]);
   useEffect(() => { load(); }, [load]);
-
-  const saveAcc = async () => {
-    if (!form.nomor_kontrak.trim() || !form.nama_debitur.trim()) { toast.error("Nomor kontrak dan nama debitur wajib"); return; }
-    setSaving(true);
-    try {
-      await api.post("/akun", {
-        ...form,
-        client_id: sk.client_id, surat_kuasa_id: sk.id,
-        latitude: form.latitude ? parseFloat(form.latitude) : null,
-        longitude: form.longitude ? parseFloat(form.longitude) : null,
-      });
-      toast.success("Akun/unit ditambahkan");
-      setAccOpen(false); setForm(EMPTY_ACC); load();
-    } catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
-  };
 
   const saveSk = async () => {
     setSaving(true);
@@ -64,7 +43,19 @@ export default function SuratKuasaDetail() {
     } catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
   };
 
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const uploadFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type !== "application/pdf") { toast.error("File Surat Kuasa harus PDF"); return; }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await api.post(`/surat-kuasa/${id}/file`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast.success("Dokumen Surat Kuasa diunggah"); load();
+    } catch (err) { toast.error(errMsg(err)); } finally { setUploading(false); }
+  };
 
   if (loading || !sk) return <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>;
 
@@ -91,21 +82,33 @@ export default function SuratKuasaDetail() {
           <div><p className="text-xs text-slate-400">Tanggal Surat</p><p className="font-medium text-slate-700">{formatDate(sk.tanggal_surat)}</p></div>
           <div><p className="text-xs text-slate-400">Berlaku</p><p className="font-medium text-slate-700">{formatDate(sk.tanggal_berlaku)}</p></div>
           <div><p className="text-xs text-slate-400">Berakhir</p><p className="font-medium text-slate-700">{formatDate(sk.tanggal_berakhir)}</p></div>
-          <div><p className="text-xs text-slate-400">Total Akun</p><p className="font-medium text-slate-700">{sk.total_akun}</p></div>
+          <div><p className="text-xs text-slate-400">Total Unit</p><p className="font-medium text-slate-700">{sk.total_akun}</p></div>
         </div>
         {sk.keterangan && <p className="text-sm text-slate-500 mt-4 bg-slate-50 rounded-xl p-3">{sk.keterangan}</p>}
+
+        {/* Dokumen Surat Kuasa */}
+        <div className="mt-5 pt-5 border-t border-slate-100 flex items-center gap-2 flex-wrap">
+          <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={uploadFile} data-testid="sk-file-input" />
+          {sk.file_url ? (
+            <>
+              <Button variant="outline" onClick={() => setPreviewOpen(true)} className="rounded-xl" data-testid="sk-preview-button"><FileText className="w-4 h-4 mr-1 text-blue-600" /> Preview Surat Kuasa</Button>
+              <a href={fileUrl(sk.file_url)} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-4 py-2 rounded-xl" data-testid="sk-download-button"><Download className="w-4 h-4" /> Download</a>
+              <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} className="rounded-xl" data-testid="sk-replace-button">{uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />} Ganti Dokumen</Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} className="rounded-xl" data-testid="sk-upload-button">{uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />} Unggah Dokumen PDF</Button>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <h2 className="font-heading text-lg font-semibold text-slate-800">Daftar Akun / Unit</h2>
-        <Button onClick={() => { setForm(EMPTY_ACC); setAccOpen(true); }} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="sk-add-akun-button">
-          <Plus className="w-4 h-4 mr-1" /> Tambah Akun
-        </Button>
+      <div>
+        <h2 className="font-heading text-lg font-semibold text-slate-800">Daftar Unit pada Surat Kuasa ini</h2>
+        <p className="text-sm text-slate-400 mt-0.5">Tambah unit baru dilakukan di menu Kontrak &amp; Unit.</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         {sk.accounts.length === 0 ? (
-          <EmptyState icon={Car} title="Belum ada akun pada Surat Kuasa ini" desc="Tambahkan akun/unit untuk surat kuasa ini." />
+          <EmptyState icon={Car} title="Belum ada unit pada Surat Kuasa ini" desc="Tambahkan unit dari menu Kontrak & Unit." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -136,39 +139,11 @@ export default function SuratKuasaDetail() {
         )}
       </div>
 
-      {/* Add account dialog */}
-      <Dialog open={accOpen} onOpenChange={setAccOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="akun-dialog">
-          <DialogHeader><DialogTitle className="font-heading">Tambah Akun / Unit</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
-            <div><Label>Nomor Kontrak *</Label><Input value={form.nomor_kontrak} onChange={set("nomor_kontrak")} className="mt-1.5 rounded-xl" data-testid="akun-kontrak-input" /></div>
-            <div><Label>Nama Debitur *</Label><Input value={form.nama_debitur} onChange={set("nama_debitur")} className="mt-1.5 rounded-xl" data-testid="akun-debitur-input" /></div>
-            <div><Label>NIK (opsional)</Label><Input value={form.nik} onChange={set("nik")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Nomor Telepon</Label><Input value={form.telepon} onChange={set("telepon")} className="mt-1.5 rounded-xl" /></div>
-            <div className="sm:col-span-2"><Label>Alamat</Label><Textarea value={form.alamat} onChange={set("alamat")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Provinsi</Label><Input value={form.provinsi} onChange={set("provinsi")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Kabupaten/Kota</Label><Input value={form.kabupaten} onChange={set("kabupaten")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Kecamatan</Label><Input value={form.kecamatan} onChange={set("kecamatan")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Kelurahan/Desa</Label><Input value={form.kelurahan} onChange={set("kelurahan")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Nomor Polisi</Label><Input value={form.nomor_polisi} onChange={set("nomor_polisi")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Jenis Kendaraan</Label><Input value={form.jenis_kendaraan} onChange={set("jenis_kendaraan")} placeholder="Mobil / Motor" className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Merk</Label><Input value={form.merk} onChange={set("merk")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Model / Tipe</Label><Input value={form.model} onChange={set("model")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Tahun</Label><Input value={form.tahun} onChange={set("tahun")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Warna</Label><Input value={form.warna} onChange={set("warna")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>No. Rangka (opsional)</Label><Input value={form.nomor_rangka} onChange={set("nomor_rangka")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>No. Mesin (opsional)</Label><Input value={form.nomor_mesin} onChange={set("nomor_mesin")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>STNK atas nama</Label><Input value={form.stnk_name} onChange={set("stnk_name")} placeholder="Kosongkan = nama debitur" className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Latitude (opsional)</Label><Input value={form.latitude} onChange={set("latitude")} className="mt-1.5 rounded-xl" /></div>
-            <div><Label>Longitude (opsional)</Label><Input value={form.longitude} onChange={set("longitude")} className="mt-1.5 rounded-xl" /></div>
-            <div className="sm:col-span-2"><Label>Keterangan Admin</Label><Textarea value={form.keterangan} onChange={set("keterangan")} className="mt-1.5 rounded-xl" /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAccOpen(false)} className="rounded-xl">Batal</Button>
-            <Button onClick={saveAcc} disabled={saving} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="akun-save-button">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Simpan"}
-            </Button>
-          </DialogFooter>
+      {/* Preview dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="sm:max-w-3xl" data-testid="sk-preview-dialog">
+          <DialogHeader><DialogTitle className="font-heading text-base">Preview Surat Kuasa {sk.nomor}</DialogTitle></DialogHeader>
+          {sk.file_url && <iframe title="Surat Kuasa" src={fileUrl(sk.file_url)} className="w-full h-[70vh] rounded-xl border border-slate-200" />}
         </DialogContent>
       </Dialog>
 
