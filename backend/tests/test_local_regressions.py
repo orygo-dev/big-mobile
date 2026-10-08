@@ -90,7 +90,7 @@ def local_api(monkeypatch):
     monkeypatch.setattr(server.transactions, "ENABLED", False)
     monkeypatch.setattr(server.app.state, "database_ready", True)
     collections = {}
-    for name in ("users", "idempotency", "rate_limits", "revoked_tokens", "upload_intents", "report_photos", "field_reports", "documents", "document_templates", "assignments", "assignment_letters", "accounts", "clients", "power_of_attorneys", "debtors", "audit_logs", "companies", "login_attempts"):
+    for name in ("users", "chat_messages", "chat_reads", "idempotency", "rate_limits", "revoked_tokens", "upload_intents", "report_photos", "field_reports", "documents", "document_templates", "assignments", "assignment_letters", "accounts", "clients", "power_of_attorneys", "debtors", "audit_logs", "companies", "login_attempts"):
         cursor = Mock()
         cursor.to_list = AsyncMock(return_value=[])
         cursor.sort.return_value = cursor

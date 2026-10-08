@@ -11,9 +11,15 @@ const root=path.resolve(import.meta.dirname,'../build');
 const origin=`https://localhost:${fixture.web_port}`;
 const apiURL=new URL(fixture.api_url);
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'};
+let dropNextChatAcknowledgement=false;
 const server=https.createServer({key:fs.readFileSync(fixture.key),cert:fs.readFileSync(fixture.cert)},(incoming,outgoing)=>{
   if(incoming.url.startsWith('/api/')){
-    const upstream=http.request({hostname:apiURL.hostname,port:apiURL.port,path:incoming.url,method:incoming.method,headers:incoming.headers},response=>{outgoing.writeHead(response.statusCode,response.headers);response.pipe(outgoing);});
+    const drop=dropNextChatAcknowledgement&&incoming.method==='POST'&&/^\/api\/chat\/[^/]+\/messages$/.test(incoming.url);
+    if(drop)dropNextChatAcknowledgement=false;
+    const upstream=http.request({hostname:apiURL.hostname,port:apiURL.port,path:incoming.url,method:incoming.method,headers:incoming.headers},response=>{
+      if(drop&&response.statusCode===200){response.resume();response.on('end',()=>{outgoing.writeHead(502,{'content-type':'application/json'});outgoing.end(JSON.stringify({detail:'QA chat acknowledgement lost'}));});}
+      else{outgoing.writeHead(response.statusCode,response.headers);response.pipe(outgoing);}
+    });
     upstream.on('error',()=>{outgoing.writeHead(503);outgoing.end();});incoming.pipe(upstream);return;
   }
   let file=path.resolve(root,'.'+new URL(incoming.url,origin).pathname);
@@ -44,6 +50,28 @@ try {
   await ap.goto(origin+'/admin/penugasan');await ap.getByTestId('penugasan-create-button').click();await ap.getByTestId('penugasan-unit-select').click();await ap.getByRole('option').filter({hasText:unit.nama_debitur}).click();await ap.getByTestId('penugasan-petugas-select').click();await ap.getByRole('option').filter({hasText:'QA officer'}).click();
   let pending=ap.waitForResponse(response=>response.url().endsWith('/api/penugasan')&&response.request().method()==='POST');await ap.getByTestId('penugasan-submit-button').click();const assigned=await pending;assert.equal(assigned.status(),200);const letter=await assigned.json();
   await op.goto(origin+'/app/tugas/'+unit.id);const authority=op.getByTestId('detail-tugas-surat-kuasa');await authority.waitFor();assert.equal((await officer.request.get(origin+await authority.getAttribute('href'))).status(),200);
+  await op.getByTestId('detail-tugas-chat').click();await op.getByTestId('chat-text').fill('Koordinasi chat browser QA');
+  await op.getByTestId('chat-file-input').setInputFiles([fixture.image,fixture.pdf]);
+  await op.evaluate(()=>{window.__qaGeo=navigator.geolocation.getCurrentPosition;navigator.geolocation.getCurrentPosition=(_,failure)=>failure({code:1});});
+  await op.getByTestId('chat-share-location').click();await op.getByRole('alert').filter({hasText:'Lokasi belum tersedia'}).waitFor();
+  await op.evaluate(()=>{navigator.geolocation.getCurrentPosition=window.__qaGeo;delete window.__qaGeo;});
+  await op.getByTestId('chat-share-location').click();await op.getByTestId('chat-location-preview').waitFor();
+  // Proxy keeps the actual binary file bytes; CDP route.fetch omits disk-upload bytes.
+  dropNextChatAcknowledgement=true;
+  await op.getByTestId('chat-send').click();await op.getByRole('alert').filter({hasText:'QA chat acknowledgement lost'}).waitFor();assert.equal(await op.getByTestId('chat-text').inputValue(),'Koordinasi chat browser QA');
+  pending=op.waitForResponse(response=>response.url().endsWith('/messages')&&response.request().method()==='POST'&&response.status()===200);await op.getByTestId('chat-send').click();await pending;
+  await op.getByTestId('chat-attachment-image').locator('img').evaluate(image=>image.decode());await op.getByTestId('chat-location').waitFor();
+  let chat=await api('GET','chat/'+letter.assignment_id);assert.equal(chat.messages.length,1);assert.equal(chat.messages[0].attachments.length,2);assert.equal(chat.unread,1);
+  await ap.goto(origin+'/admin/chat');await ap.getByTestId('chat-inbox-'+letter.assignment_id).click();await ap.getByText('Koordinasi chat browser QA',{exact:true}).waitFor();await ap.getByTestId('chat-attachment-image').locator('img').evaluate(image=>image.decode());
+  const chatFile=await ap.getByTestId('chat-attachment-document').getAttribute('href');assert.equal((await admin.request.get(origin+chatFile)).status(),200);
+  await ap.getByTestId('chat-text').fill('Arahan admin melalui chat');pending=ap.waitForResponse(response=>response.url().endsWith('/messages')&&response.request().method()==='POST');await ap.getByTestId('chat-send').click();assert.equal((await pending).status(),200);
+  await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
+  await ap.screenshot({path:path.join(path.dirname(fixture.print_pdf),'chat-admin.png'),fullPage:true});
+  await op.screenshot({path:path.join(path.dirname(fixture.print_pdf),'chat-officer.png'),fullPage:true});
+  const chatReadURL=url=>url.pathname===`/api/chat/${letter.assignment_id}`;
+  await op.route(chatReadURL,route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'QA chat read failure'})}));
+  await op.reload();await op.getByRole('alert').filter({hasText:'QA chat read failure'}).waitFor();assert.equal(await op.getByTestId('chat-composer').count(),0);
+  await op.unroute(chatReadURL);await op.getByRole('button',{name:'Coba lagi',exact:true}).click();await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
   await op.goto(origin+'/app/tugas/'+unit.id+'/laporan');await op.getByTestId('laporan-status-UNIT_DITEMUKAN').click();await op.getByTestId('laporan-catatan-input').fill('Kunjungan browser QA dengan foto dan GPS');await op.getByText('Terdeteksi',{exact:true}).waitFor();await op.getByTestId('laporan-next-button').click();await op.getByTestId('laporan-photo-input').setInputFiles(fixture.image);await op.getByTestId('laporan-photo-preview-0').waitFor();await op.getByTestId('laporan-next-button').click();
   // Simulate a lost acknowledgement after the API has committed the report.
   await op.route('**/api/laporan',async route=>{const response=await route.fetch();assert.equal(response.status(),200);await route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({detail:'QA acknowledgement lost'})});});
@@ -52,12 +80,13 @@ try {
   await ap.goto(origin+'/admin/laporan/'+report.id);await ap.getByTestId('laporan-photo-0').locator('img').evaluate(image=>image.decode());await ap.getByTestId('laporan-review-input').fill('Review browser QA');pending=ap.waitForResponse(response=>response.url().endsWith('/review')&&response.request().method()==='PATCH');await ap.getByTestId('laporan-review-save').click();assert.equal((await pending).status(),200);
   await op.goto(origin+'/app/riwayat');await op.getByText('Review browser QA').waitFor();await op.locator('img[src*="/api/files/"]').first().evaluate(image=>image.decode());
   await api('PATCH','surat-tugas/'+letter.id+'/status',{status:'selesai'});
+  await op.goto(origin+'/app/chat/'+letter.assignment_id);await op.getByTestId('chat-read-only').waitFor();assert.equal(await op.getByTestId('chat-composer').count(),0);await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
   await ap.goto(origin+'/admin/surat-tugas/'+letter.id+'/print');await ap.getByText(unit.nama_debitur,{exact:false}).first().waitFor();
   await ap.pdf({path:fixture.print_pdf,format:'A4',printBackground:true});
   await ap.route('**/api/dashboard/stats',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'QA dashboard failure'})}));await ap.goto(origin+'/admin');await ap.getByRole('alert').filter({hasText:'QA dashboard failure'}).waitFor();assert.equal(await ap.getByTestId('dashboard-stats').count(),0);await ap.unroute('**/api/dashboard/stats');await ap.getByRole('button',{name:'Coba lagi',exact:true}).click();await ap.getByTestId('dashboard-stats').waitFor();
   await op.goto(origin+'/app/profil');await op.getByTestId('petugas-logout-button').click();await op.waitForURL('**/login');assert.equal((await officer.request.get(origin+'/api/auth/me')).status(),401);
   assert.equal(errors.length,0);
-  console.log('PASS HTTPS UI: assignment, photo/GPS, lost acknowledgement, read failure/retry, review/history, print, secure cookie and logout.');
+  console.log('PASS HTTPS UI: assignment, chat photo/document/location, chat lost acknowledgement retry, closed chat history, photo/GPS, report lost acknowledgement, read failure/retry, review/history, print, secure cookie and logout.');
 } finally {
   await direct.dispose();await browser.close();await new Promise(resolve=>server.close(resolve));
 }

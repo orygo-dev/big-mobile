@@ -32,7 +32,7 @@ def preflight(database, client):
             {'$group':{'_id':'$'+key,'count':{'$sum':1}}},
             {'$match':{'count':{'$gt':1}}}, {'$limit':1}])
         if next(duplicates, None): problems.append(f'Duplicate {collection}.{key}')
-    references = [('accounts','client_id','clients'), ('accounts','surat_kuasa_id','power_of_attorneys'), ('assignments','account_id','accounts'), ('assignments','officer_id','users'), ('field_reports','assignment_id','assignments')]
+    references = [('accounts','client_id','clients'), ('accounts','surat_kuasa_id','power_of_attorneys'), ('assignments','account_id','accounts'), ('assignments','officer_id','users'), ('field_reports','assignment_id','assignments'), ('chat_messages','assignment_id','assignments'), ('chat_messages','sender_id','users'), ('chat_reads','assignment_id','assignments'), ('chat_reads','user_id','users')]
     for collection, field, parent in references:
         for item in database[collection].find({}, {field:1,'company_id':1}):
             reference = item.get(field)

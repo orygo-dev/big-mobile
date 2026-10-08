@@ -1778,6 +1778,9 @@ async def serve_file(path: str, user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # Mount
 # ---------------------------------------------------------------------------
+import chat
+import sys
+chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 
 app.add_middleware(
@@ -1878,6 +1881,12 @@ async def initialize_database():
     # Sparse key protects new submissions without requiring destructive legacy cleanup.
     await db.field_reports.create_index("submission_key", unique=True, sparse=True)
     await db.assignments.create_index("active_key", unique=True, sparse=True)
+    await db.chat_messages.create_index("id", unique=True)
+    await db.chat_messages.create_index([("company_id", 1), ("assignment_id", 1), ("sender_id", 1), ("client_message_id", 1)], unique=True)
+    await db.chat_messages.create_index([("company_id", 1), ("assignment_id", 1), ("sequence", 1)], unique=True)
+    await db.chat_messages.create_index([("company_id", 1), ("officer_id", 1), ("sender_id", 1)])
+    await db.chat_reads.create_index([("company_id", 1), ("assignment_id", 1), ("user_id", 1)], unique=True)
+    await db.assignments.create_index([("company_id", 1), ("officer_id", 1), ("chat_updated_at", -1)])
     if os.environ.get("SEED_DEMO_DATA", "false").lower() == "true":
         from seed import seed_all
         await seed_all(db)
@@ -1897,7 +1906,7 @@ async def reconcile_uploads():
         if not path.startswith(f"{APP_NAME}/companies/{intent['company_id']}/"):
             logger.warning("Invalid upload journal namespace; cleanup skipped")
             continue
-        referenced = await db.report_photos.find_one({"storage_path": path}) or await db.documents.find_one({"storage_path": path, "company_id": intent["company_id"]})
+        referenced = await db.report_photos.find_one({"storage_path": path}) or await db.documents.find_one({"storage_path": path, "company_id": intent["company_id"]}) or await db.chat_messages.find_one({"company_id": intent["company_id"], "attachments.storage_path": path})
         if not referenced:
             await run_in_threadpool(delete_object, path)
         await db.upload_intents.delete_one({"id": intent["id"]})

@@ -169,6 +169,10 @@ def test_logout_revokes_access_and_production_login_sets_secure_cookie(live):
     assert 'HttpOnly' in response.headers['set-cookie'] and 'Secure' in response.headers['set-cookie']
     live['call']('other','POST','/auth/logout')
     live['call']('other','GET','/auth/me',401)
+    # Later ownership tests need an independently authenticated session.
+    payload=jwt.decode(live['tokens']['other'],live['env']['JWT_SECRET'],algorithms=['HS256'],audience='big-mobile',issuer='big-mobile-api')
+    payload['jti']=uuid.uuid4().hex
+    live['tokens']['other']=jwt.encode(payload,live['env']['JWT_SECRET'],algorithm='HS256')
 
 
 def test_paginated_master_data_and_historical_report_search(live):
@@ -233,3 +237,82 @@ def test_https_browser_workflow_and_network_recovery(live):
         assert 1 <= len(reader.pages) <= 3
         assert 'Browser Debitur' in ''.join(page.extract_text() for page in reader.pages)
     finally:fixture.unlink(missing_ok=True)
+
+def test_chat_attachment_location_idempotency_and_historical_access(live):
+    import json
+    from pypdf import PdfWriter
+    account,_=unit(live);letter=assign(live,account);task=letter['assignment_id'];call=live['call'];db=live['db']
+    photo=io.BytesIO();Image.new('RGB',(32,32),'orange').save(photo,'PNG')
+    pdf=io.BytesIO();writer=PdfWriter();writer.add_blank_page(width=100,height=100);writer.write(pdf)
+    data={'client_message_id':str(uuid.uuid4()),'text':'Koordinasi kunjungan','location':json.dumps({'latitude':-6.2,'longitude':106.8,'accuracy':10})}
+    files=[('files',('photo.png',photo.getvalue(),'image/png')),('files',('document.pdf',pdf.getvalue(),'application/pdf'))]
+    message=call('officer','POST',f'/chat/{task}/messages',data=data,files=files).json()
+    assert message['sequence']==1 and len(message['attachments'])==2 and 'fingerprint' not in message
+    assert all('storage_path' not in item for item in message['attachments'])
+    assert call('officer','POST',f'/chat/{task}/messages',data=data,files=files).json()['id']==message['id']
+    call('officer','POST',f'/chat/{task}/messages',409,data={**data,'text':'Changed'},files=files)
+    assert db.chat_messages.count_documents({'assignment_id':task})==1
+    for attachment in message['attachments']:
+        path=attachment['url'].removeprefix('/api')
+        response=call('admin','GET',path)
+        assert response.headers['x-content-type-options']=='nosniff'
+        assert response.headers['content-disposition'].startswith('inline' if attachment['kind']=='image' else 'attachment')
+        call('foreign','GET',path,404);call('other','GET',path,404)
+    assert call('admin','GET',f'/chat/{task}').json()['unread']==1
+    assert call('admin','GET','/chat/unread').json()['count']>=1
+    call('admin','POST',f'/chat/{task}/read',json={'sequence':9999})
+    assert call('admin','GET',f'/chat/{task}').json()['unread']==0
+    call('admin','POST',f'/chat/{task}/read',json={'sequence':0})
+    assert call('admin','GET',f'/chat/{task}').json()['unread']==0
+    call('other','GET',f'/chat/{task}',404);call('foreign','GET',f'/chat/{task}',404)
+    inbox=call('officer','GET','/chat').json()['items'];assert any(item['assignment_id']==task for item in inbox)
+    call('admin','PATCH',f"/surat-tugas/{letter['id']}/status",json={'status':'selesai'})
+    assert call('officer','GET',f'/chat/{task}').json()['assignment']['read_only']
+    assert call('officer','POST',f'/chat/{task}/messages',data=data,files=files).json()['id']==message['id']
+    call('officer','POST',f'/chat/{task}/messages',409,data={'client_message_id':str(uuid.uuid4()),'text':'Closed'})
+    call('officer','GET',message['attachments'][0]['url'].removeprefix('/api'))
+
+
+def test_chat_concurrent_retry_sequence_and_pagination(live):
+    account,_=unit(live);letter=assign(live,account);task=letter['assignment_id'];call=live['call'];db=live['db']
+    data={'client_message_id':str(uuid.uuid4()),'text':'Retry in parallel'}
+    def send():return requests.post(live['url']+f'/chat/{task}/messages',headers={'Authorization':'Bearer '+live['tokens']['officer']},data=data,timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:send(),range(2)))
+    assert [r.status_code for r in responses]==[200,200]
+    assert responses[0].json()['id']==responses[1].json()['id']
+    assert db.chat_messages.count_documents({'assignment_id':task})==1
+    for index in range(4):call('admin','POST',f'/chat/{task}/messages',data={'client_message_id':str(uuid.uuid4()),'text':f'Message {index}'})
+    latest=call('officer','GET',f'/chat/{task}?limit=2').json();assert [m['sequence'] for m in latest['messages']]==[4,5] and latest['has_more']
+    previous=call('officer','GET',f'/chat/{task}?before=4&limit=2').json();assert [m['sequence'] for m in previous['messages']]==[2,3]
+    following=call('officer','GET',f'/chat/{task}?after=1&limit=2').json();assert [m['sequence'] for m in following['messages']]==[2,3] and following['has_more']
+
+
+def test_chat_audit_failure_rolls_back_message_and_sequence(live):
+    account,_=unit(live);letter=assign(live,account);task=letter['assignment_id'];db=live['db'];call=live['call']
+    db.command('collMod','audit_logs',validator={'id':{'$exists':False}},validationLevel='strict')
+    try:
+        call('admin','POST',f'/chat/{task}/messages',500,data={'client_message_id':str(uuid.uuid4()),'text':'Must roll back'})
+        assert db.chat_messages.count_documents({'assignment_id':task})==0
+        assert not db.assignments.find_one({'id':task}).get('chat_sequence')
+    finally:db.command('collMod','audit_logs',validator={})
+
+
+def test_chat_invalid_file_and_owner_have_no_upload(live):
+    account,_=unit(live);letter=assign(live,account);task=letter['assignment_id'];call=live['call'];db=live['db']
+    before=db.upload_intents.count_documents({})
+    call('other','POST',f'/chat/{task}/messages',404,data={'client_message_id':str(uuid.uuid4()),'text':'Blocked'})
+    call('officer','POST',f'/chat/{task}/messages',400,data={'client_message_id':str(uuid.uuid4())},files={'files':('fake.pdf',b'invalid','application/pdf')})
+    call('officer','POST',f'/chat/{task}/messages',400,data={'client_message_id':str(uuid.uuid4())},files={'files':('app.exe',b'fake','application/octet-stream')})
+    assert db.upload_intents.count_documents({})==before
+    assert db.chat_messages.count_documents({'assignment_id':task})==0
+
+def test_chat_send_racing_close_never_writes_after_closed_state(live):
+    account,_=unit(live);letter=assign(live,account);task=letter['assignment_id'];db=live['db']
+    def send():return requests.post(live['url']+f'/chat/{task}/messages',headers={'Authorization':'Bearer '+live['tokens']['officer']},data={'client_message_id':str(uuid.uuid4()),'text':'Race with closing'},timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        closing=pool.submit(live['call'],'admin','PATCH',f"/surat-tugas/{letter['id']}/status",json={'status':'selesai'})
+        pending=pool.submit(send);closing.result();response=pending.result()
+    assert response.status_code in {200,409}
+    assert db.assignments.find_one({'id':task})['status']=='SELESAI'
+    assert db.chat_messages.count_documents({'assignment_id':task})==int(response.status_code==200)
+    live['call']('officer','POST',f'/chat/{task}/messages',409,data={'client_message_id':str(uuid.uuid4()),'text':'Definitely closed'})

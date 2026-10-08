@@ -43,6 +43,7 @@ export default function Dashboard() {
       <div className="brand-hero rounded-2xl p-5 sm:p-7">
         <h1 className="font-heading text-2xl sm:text-3xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-white/90 mt-1">Ringkasan operasional lapangan hari ini.</p>
+        <button onClick={() => navigate('/admin/chat')} className="mt-3 rounded-xl bg-white/20 px-3 py-2 text-sm font-semibold">Buka kotak masuk chat</button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" data-testid="dashboard-stats">

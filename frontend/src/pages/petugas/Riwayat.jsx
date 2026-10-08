@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api, { fileUrl, errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { REPORT_STATUS, formatDateTime } from "@/lib/constants";
@@ -75,6 +76,7 @@ export default function Riwayat() {
                 )}
                 <p className="text-xs mt-3 text-blue-700">{r.reviewed ? "Sudah direview admin" : "Menunggu review admin"}</p>
                 {r.catatan_admin && <div className="mt-2 rounded-xl bg-blue-50 p-3 text-sm text-slate-700"><p className="font-semibold mb-1">Catatan admin</p>{r.catatan_admin}</div>}
+                {r.assignment_id && <Link to={`/app/chat/${r.assignment_id}`} className="inline-block mt-3 text-sm font-semibold text-blue-600">Buka chat penugasan</Link>}
               </div>
             ))}
           </div>

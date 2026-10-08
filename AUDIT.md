@@ -23,15 +23,16 @@ Perbaikan aplikasi dan paket deployment aaPanel selesai disiapkan untuk staging.
 | Kegagalan jaringan | Dashboard/tugas/beranda/pengaturan menampilkan gagal/retry, bukan angka nol atau daftar kosong seolah berhasil. Form/foto dipertahankan ketika kirim gagal; error boundary memberi jalur pemulihan |
 | Runtime/dependency | CRA/CRACO dilepas dari jalur build; Vite/Vitest, Leaflet lokal, lazy route chunks; paket Python production dipisah dan dikunci dengan SHA256 |
 | Operasi | Compose API/web, Nginx aaPanel/HTTPS, bootstrap admin, preflight data/transaction/storage, encrypted backup/isolated restore, monitor, release dan rollback |
+| Chat penugasan | Admin/petugas, foto/dokumen/lokasi, inbox/unread/notifikasi aplikasi, pagination, retry tanpa duplikat, historical read-only, transaksi dan akses lampiran privat; lihat CHAT.md |
 | Observabilitas | Readiness DB/storage, metrics terlindungi, request ID dan log JSON aman, log rotation; cron aaPanel disiapkan untuk notifikasi operator |
 
 ## Bukti verifikasi lokal
 
-- Backend lokal: **137 tes** pada regresi API, alur, keamanan produksi dan backup. Database dimock pada suite ini; storage/validasi file memakai data sementara.
-- Replica set MongoDB nyata: **9 pengujian API/integritas + 1 pengujian browser HTTPS**. Database pengujian dibuat dengan nama unik dan dihapus setelah selesai. Meliputi rollback multi-koleksi, concurrency tugas/laporan/cancel, idempotensi, isolasi tenant/pemilik foto/PDF, perubahan kuasa/riwayat, logout, pagination/pencarian dan rollback logo ketika audit gagal.
-- Browser HTTPS: login admin/petugas, cookie Secure/HttpOnly, refresh tanpa JWT localStorage, penugasan dari UI, GPS simulasi, foto/watermark, file SK petugas, review/feedback, PDF A4, retry ketika read gagal, respons kirim yang hilang setelah commit dan logout. Menggunakan sertifikat lokal pengujian dan mengabaikan certificate error hanya dalam browser QA; sertifikat publik aaPanel belum diuji.
+- Backend lokal: **150 tes** pada regresi API, alur, keamanan produksi dan backup. Database dimock pada suite ini; storage/validasi file memakai data sementara.
+- Replica set MongoDB nyata: **14 pengujian API/integritas + 1 pengujian browser HTTPS**. Database pengujian dibuat dengan nama unik dan dihapus setelah selesai. Meliputi rollback multi-koleksi, concurrency tugas/laporan/cancel, idempotensi, isolasi tenant/pemilik foto/PDF, perubahan kuasa/riwayat, logout, pagination/pencarian dan rollback logo ketika audit gagal.
+- Browser HTTPS: login admin/petugas, cookie Secure/HttpOnly, refresh tanpa JWT localStorage, penugasan dari UI, GPS simulasi, foto/watermark, file SK petugas, chat foto/PDF/lokasi/izin GPS ditolak/retry respons hilang/read gagal/riwayat tertutup, review/feedback, PDF A4, retry ketika read gagal, respons kirim yang hilang setelah commit dan logout. Menggunakan sertifikat lokal pengujian dan mengabaikan certificate error hanya dalam browser QA; sertifikat publik aaPanel belum diuji.
 - Browser tambahan: close/reassign/cancel, blokir tugas masa depan, duplikat, status akhir dan kedaluwarsa otomatis pada MongoDB nyata.
-- Frontend: **12 tes** API/error/file/pagination/session/peta; build produksi Vite berhasil. Entry JS sekitar 432 kB sebelum gzip (~134 kB gzip), halaman dashboard terpisah.
+- Frontend: **13 tes** API/error/file/pagination/session/peta; build produksi Vite berhasil. Entry JS sekitar 432 kB sebelum gzip (~134 kB gzip), halaman dashboard terpisah.
 - Backup AES-256-GCM dan restore nyata ke replica set kosong: **17 koleksi, 56 dokumen, 1 foto** cocok; password hash dua pengguna cocok. Aplikasi hasil restore berhasil startup, login, membaca riwayat dan foto terautentikasi. Backup ~5,44 detik dan restore ~103,55 detik pada dataset QA kecil; bukan RTO produksi.
 - Restart MongoDB lokal secara graceful: jumlah dokumen seluruh koleksi tetap sama; readiness, login dan sesi melalui frontend proxy berhasil setelah restart.
 - Uji baseline dashboard: 100 request, concurrency 4, **0 error**, p50 85,1 ms, p95 483,4 ms pada CPU lokal. Belum mengukur kapasitas VPS atau load unggahan besar.
@@ -62,3 +63,7 @@ Ikuti `deploy/README.md`. Server aaPanel/domain/kredensial belum diberikan, sehi
 
 [Transaksi MongoDB](https://www.mongodb.com/docs/languages/python/pymongo-driver/current/crud/transactions/) dapat mengulang callback; upload/file I/O sudah ditempatkan di luar callback. [mongodump](https://www.mongodb.com/docs/database-tools/mongodump/) memakai oplog untuk backup replica set. Deployment di aaPanel mengikuti [reverse proxy/SSL resmi](https://www.aapanel.com/docs/Function/proxy.html).
 
+
+## Tambahan chat
+
+Fitur dan batas operasional chat dijelaskan pada `CHAT.md`. Pengujian mencakup send vs close, retry paralel, nomor urut, unread/read cursor, rollback audit, dan akses foto/dokumen perusahaan lain/petugas lain. Chat memakai polling saat aplikasi terbuka; push notification saat aplikasi ditutup belum tersedia. Temuan dependensi tooling sebelumnya tetap berlaku.

@@ -43,3 +43,7 @@ Lihat `AUDIT.md` untuk temuan, perbaikan, dan batas verifikasi.
 Ikuti [panduan deployment aaPanel](deploy/README.md) untuk Docker Compose, Nginx HTTPS, replica set MongoDB, bootstrap admin, preflight, backup terenkripsi, monitoring, dan rollback. Produksi memakai cookie HttpOnly/Secure, storage lokal atau S3 private, dan transaksi MongoDB wajib. Gunakan `backend/requirements-production.lock` dengan `pip install --require-hashes -r ...` untuk paket runtime yang dikunci.
 
 Jalankan suite keamanan/ops tambahan: `python -m pytest backend/tests/test_production_security.py backend/tests/test_backup_ops.py -q`. Untuk integrasi transaksi nyata, set `MONGO_TEST_URI` ke replica set pengujian lalu jalankan `backend/tests/test_real_transactions.py`; pengujian membuat database terisolasi sendiri dan membersihkannya. CI di `.github/workflows/verify.yml` juga membangun kedua container. Deployment/HTTPS, pemulihan data asli dan perangkat fisik harus diverifikasi pada lingkungan target sebelum go-live.
+
+## Chat penugasan
+
+Chat admin–petugas mendukung foto, dokumen dan lokasi GPS, kotak masuk serta pesan belum dibaca. Percakapan terikat pada penugasan dan menjadi hanya baca setelah tugas ditutup. Lihat [panduan chat](CHAT.md) untuk format lampiran, keamanan, retry dan batas operasional.

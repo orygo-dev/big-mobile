@@ -54,6 +54,7 @@ export default function Penugasan() {
               <button onClick={() => navigate(`/admin/surat-tugas/${l.id}/dokumen`)} className="mt-4 text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1" data-testid={`penugasan-view-st-${l.id}`}>
                 Lihat Surat Penugasan <ArrowRight className="w-3.5 h-3.5" />
               </button>
+              {l.assignment_id && <button onClick={() => navigate(`/admin/chat/${l.assignment_id}`)} className="mt-3 rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700" data-testid={`penugasan-chat-${l.id}`}>Chat petugas</button>}
             </div>
           ))}
         </div>

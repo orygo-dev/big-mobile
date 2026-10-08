@@ -62,7 +62,7 @@ export const errMsg = (e) => {
 // HttpOnly session cookie authenticates images/iframes without tokens in URLs.
 export const fileUrl = (url) => {
   if (!url) return "";
-  if (!url.startsWith("/api/files/")) return url;
+  if (!url.startsWith("/api/files/") && !url.startsWith("/api/chat/")) return url;
   return `${BACKEND_URL}${url}`;
 };
 

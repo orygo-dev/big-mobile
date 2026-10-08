@@ -31,6 +31,8 @@ const DetailTugas = lazy(() => import("@/pages/petugas/DetailTugas"));
 const BuatLaporan = lazy(() => import("@/pages/petugas/BuatLaporan"));
 const Riwayat = lazy(() => import("@/pages/petugas/Riwayat"));
 const Profil = lazy(() => import("@/pages/petugas/Profil"));
+const ChatInbox = lazy(() => import("@/pages/ChatInbox"));
+const AssignmentChat = lazy(() => import("@/pages/AssignmentChat"));
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -72,6 +74,8 @@ export default function App() {
             <Route path="laporan/:id" element={<LaporanDetail />} />
             <Route path="petugas" element={<Petugas />} />
             <Route path="pengaturan" element={<Pengaturan />} />
+            <Route path="chat" element={<ChatInbox />} />
+            <Route path="chat/:assignmentId" element={<AssignmentChat />} />
           </Route>
 
           {/* Petugas */}
@@ -82,6 +86,8 @@ export default function App() {
             <Route path="tugas/:accountId/laporan" element={<BuatLaporan />} />
             <Route path="riwayat" element={<Riwayat />} />
             <Route path="profil" element={<Profil />} />
+            <Route path="chat" element={<ChatInbox />} />
+            <Route path="chat/:assignmentId" element={<AssignmentChat />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

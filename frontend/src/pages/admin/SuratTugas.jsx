@@ -94,6 +94,7 @@ export default function SuratTugas() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => navigate(`/admin/surat-tugas/${l.id}/dokumen`)}><FileText className="w-4 h-4 mr-2" /> Dokumen Surat Penugasan</DropdownMenuItem>
+                          {l.assignment_id && <DropdownMenuItem onClick={() => navigate(`/admin/chat/${l.assignment_id}`)}>Chat petugas</DropdownMenuItem>}
                           <DropdownMenuItem onClick={() => navigate(`/admin/surat-tugas/${l.id}/print`)}><Printer className="w-4 h-4 mr-2" /> Cetak Ringkas</DropdownMenuItem>
                           {l.generate_code && <DropdownMenuItem onClick={() => window.open(`/verify/surat-tugas/${l.generate_code}`, "_blank")}><QrCode className="w-4 h-4 mr-2" /> Halaman Verifikasi</DropdownMenuItem>}
                           {l.status === "aktif" && <DropdownMenuItem onClick={() => changeStatus(l, "selesai")}>Tandai Selesai</DropdownMenuItem>}

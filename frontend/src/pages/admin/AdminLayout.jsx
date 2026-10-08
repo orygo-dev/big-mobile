@@ -4,11 +4,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import {
   LayoutDashboard, Building2, FileText, Car, ClipboardList,
-  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X, Layers,
+  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X, Layers, MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { errMsg } from "@/lib/api";
+import ChatUnread from "@/components/ChatUnread";
 
 // Sidebar dikelompokkan sesuai information architecture baru.
 // Catatan: route tetap sama (non-destruktif). Item yang akan dibuat pada Fase 2
@@ -35,6 +36,7 @@ const NAV_GROUPS = [
       { to: "/admin/penugasan", label: "Penugasan", icon: ClipboardList, tid: "admin-sidebar-penugasan-link" },
       { to: "/admin/surat-tugas", label: "Surat Tugas", icon: FileCheck2, tid: "admin-sidebar-surat-tugas-link" },
       { to: "/admin/laporan", label: "Laporan Lapangan", icon: FileSearch, tid: "admin-sidebar-laporan-link" },
+      { to: "/admin/chat", label: "Chat", icon: MessageCircle, tid: "admin-sidebar-chat-link" },
     ],
   },
   {
@@ -79,6 +81,7 @@ export default function AdminLayout() {
                 }>
                 <n.icon className="w-[18px] h-[18px] shrink-0" />
                 {n.label}
+                {n.to === '/admin/chat' && <ChatUnread />}
               </NavLink>
             ))}
           </div>
