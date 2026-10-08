@@ -54,6 +54,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: false
       - name: Scan frontend runtime image
+        if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: big-mobile-web:ci-${{ github.sha }}
