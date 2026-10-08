@@ -26,3 +26,5 @@ Startup membuat index chat otomatis; tidak menghapus atau mengubah data lama. Pr
 `python -m pytest backend/tests/test_chat.py -q` memeriksa validasi lokasi/lampiran, akses, input, status tertutup dan read cursor. Suite `backend/tests/test_real_transactions.py` dengan `MONGO_TEST_URI` dan `RUN_BROWSER_TESTS=true` memeriksa transaksi, retry paralel, rollback audit, pagination, isolasi file, riwayat tugas tertutup, send vs close, dan UI HTTPS admin/petugas.
 
 Pengujian browser memakai GPS simulasi dan file uji. Kamera/GPS/izin serta performa pada Android/iOS nyata dan aaPanel target tetap perlu diverifikasi.
+
+[CI Linux commit ff3b9f7](https://github.com/orygo-dev/big-mobile/actions/runs/37756216046) lulus seluruhnya: 150 tes backend, 13 tes frontend, 15 tes transaksi/browser HTTPS, build container/Nginx dan scan High/Critical kedua runtime image.
