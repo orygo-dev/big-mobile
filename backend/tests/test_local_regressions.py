@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "audit_tests")
 os.environ.setdefault("JWT_SECRET", "local-regression-test-secret-32-bytes")
+os.environ.setdefault("CORS_ORIGINS", "http://localhost:3000")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
 from pymongo.errors import DuplicateKeyError
