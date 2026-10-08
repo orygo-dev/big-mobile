@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import DeleteDataButton from "@/components/DeleteDataButton";
+import { useCallback, useEffect, useState } from "react";
 import api, { errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,12 +22,12 @@ export default function Klien() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     api.get("/clients", { params: { search: search || undefined } })
       .then(({ data }) => setItems(data)).catch((e) => toast.error(errMsg(e))).finally(() => setLoading(false));
-  };
-  useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [search]);
+  }, [search]);
+  useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
   const openEdit = (c) => { setEditing(c); setForm({ ...EMPTY, ...c }); setOpen(true); };
@@ -66,7 +67,7 @@ export default function Klien() {
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama klien..." className="pl-9 rounded-xl" data-testid="klien-search-input" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="brand-panel rounded-2xl border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
         ) : items.length === 0 ? (
@@ -98,7 +99,8 @@ export default function Klien() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => openEdit(c)} className="text-slate-500 hover:text-blue-600 p-1.5" data-testid={`klien-edit-${c.id}`}><Pencil className="w-4 h-4" /></button>
+                      <DeleteDataButton endpoint={`/clients/${c.id}`} name={c.nama_perusahaan} onDeleted={load} testId={`klien-delete-${c.id}`} />
+                      <button aria-label="Edit klien" onClick={() => openEdit(c)} className="text-slate-500 hover:text-blue-600 p-1.5" data-testid={`klien-edit-${c.id}`}><Pencil className="w-4 h-4" /></button>
                       {c.status === "aktif" && (
                         <button onClick={() => deactivate(c)} className="text-slate-500 hover:text-rose-600 p-1.5" data-testid={`klien-deactivate-${c.id}`}><Ban className="w-4 h-4" /></button>
                       )}

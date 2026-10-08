@@ -5,7 +5,7 @@ module.exports = {
     darkMode: ["class"],
     content: [
     "./src/**/*.{js,jsx,ts,tsx}",
-    "./public/index.html"
+    "./index.html"
   ],
   theme: {
     extend: {
@@ -15,6 +15,7 @@ module.exports = {
         sm: 'calc(var(--radius) - 4px)'
       },
       colors: {
+        blue: { 50: '#e9f4ff', 100: '#dcecff', 200: '#b4d5ff', 500: '#2682ff', 600: '#0066ff', 700: '#0055d4', 800: '#0045ad' },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -20,12 +20,12 @@ export default function SuratTugas() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     api.get("/surat-tugas", { params: { search: search || undefined, status: statusFilter !== "all" ? statusFilter : undefined } })
       .then(({ data }) => setItems(data)).catch((e) => toast.error(errMsg(e))).finally(() => setLoading(false));
-  };
-  useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [search, statusFilter]);
+  }, [search, statusFilter]);
+  useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
 
   const changeStatus = async (l, status) => {
     try { await api.patch(`/surat-tugas/${l.id}/status`, { status }); toast.success("Status diperbarui"); load(); }
@@ -53,7 +53,7 @@ export default function SuratTugas() {
         </Select>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="brand-panel rounded-2xl border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
         ) : items.length === 0 ? (
@@ -96,8 +96,8 @@ export default function SuratTugas() {
                           <DropdownMenuItem onClick={() => navigate(`/admin/surat-tugas/${l.id}/dokumen`)}><FileText className="w-4 h-4 mr-2" /> Dokumen Surat Penugasan</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => navigate(`/admin/surat-tugas/${l.id}/print`)}><Printer className="w-4 h-4 mr-2" /> Cetak Ringkas</DropdownMenuItem>
                           {l.generate_code && <DropdownMenuItem onClick={() => window.open(`/verify/surat-tugas/${l.generate_code}`, "_blank")}><QrCode className="w-4 h-4 mr-2" /> Halaman Verifikasi</DropdownMenuItem>}
-                          <DropdownMenuItem onClick={() => changeStatus(l, "selesai")}>Tandai Selesai</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => changeStatus(l, "dibatalkan")} className="text-rose-600">Batalkan</DropdownMenuItem>
+                          {l.status === "aktif" && <DropdownMenuItem onClick={() => changeStatus(l, "selesai")}>Tandai Selesai</DropdownMenuItem>}
+                          {l.status === "aktif" && <DropdownMenuItem onClick={() => changeStatus(l, "dibatalkan")} className="text-rose-600">Batalkan</DropdownMenuItem>}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>

@@ -4,9 +4,11 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import {
   LayoutDashboard, Building2, FileText, Car, ClipboardList,
-  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X,
+  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X, Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { errMsg } from "@/lib/api";
 
 // Sidebar dikelompokkan sesuai information architecture baru.
 // Catatan: route tetap sama (non-destruktif). Item yang akan dibuat pada Fase 2
@@ -49,22 +51,22 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
-  const doLogout = () => { logout(); navigate("/login", { replace: true }); };
+  const doLogout = async () => {try {await logout(); navigate("/login", {replace: true});} catch (e) {toast.error(errMsg(e));}};
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      <div className="px-5 py-5 flex items-center justify-center border-b border-slate-800 min-h-[76px]">
+      <div className="px-5 py-5 flex items-center justify-center gap-3 border-b border-blue-100 min-h-[76px]">
         {logo ? (
           <img src={logo} alt={appName} className="h-12 w-auto max-w-[200px] object-contain" data-testid="sidebar-logo" />
         ) : (
-          <h1 className="font-heading font-bold text-white text-xl tracking-tight">{appName}</h1>
+          <><span className="brand-mark rounded-xl p-2 shrink-0"><Layers className="w-5 h-5" /></span><h1 className="font-heading font-semibold text-slate-900 text-xl tracking-tight break-words min-w-0">{appName}</h1></>
         )}
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
         {NAV_GROUPS.map((group, gi) => (
           <div key={gi} className="space-y-1">
             {group.section && (
-              <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 {group.section}
               </p>
             )}
@@ -72,19 +74,19 @@ export default function AdminLayout() {
               <NavLink key={n.to} to={n.to} end={n.end} data-testid={n.tid} onClick={() => setOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
                   }`
                 }>
-                <n.icon className="w-[18px] h-[18px]" />
+                <n.icon className="w-[18px] h-[18px] shrink-0" />
                 {n.label}
               </NavLink>
             ))}
           </div>
         ))}
       </nav>
-      <div className="p-3 border-t border-slate-800">
+      <div className="p-3 border-t border-blue-100">
         <button onClick={doLogout} data-testid="admin-logout-button"
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-rose-600 hover:text-white transition-all">
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-rose-50 hover:text-rose-700 transition-all">
           <LogOut className="w-[18px] h-[18px]" /> Keluar
         </button>
       </div>
@@ -92,9 +94,9 @@ export default function AdminLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans">
+    <div className="brand-app min-h-screen flex font-sans">
       {/* Desktop sidebar */}
-      <aside className="w-64 bg-slate-900 flex-shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 z-30">
+      <aside className="brand-sidebar w-64 flex-shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 z-30">
         <SidebarContent />
       </aside>
 
@@ -102,7 +104,7 @@ export default function AdminLayout() {
       {open && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-64 bg-slate-900"><SidebarContent /></aside>
+          <aside className="brand-sidebar absolute inset-y-0 left-0 w-64"><SidebarContent /></aside>
         </div>
       )}
 

@@ -1,3 +1,4 @@
+import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useState, useCallback } from "react";
 import api, { errMsg, fileUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ACCOUNT_STATUS } from "@/lib/constants";
 import EmptyState from "@/components/EmptyState";
 import PenugasanDialog from "@/components/PenugasanDialog";
-import { Car, Loader2, Search, ClipboardList, ChevronLeft, ChevronRight, Plus, FileText, Download, Upload } from "lucide-react";
+import { Car, Loader2, Search, ClipboardList, ChevronLeft, ChevronRight, Plus, FileText, Download, Upload, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_OPTS = Object.keys(ACCOUNT_STATUS);
@@ -35,6 +36,7 @@ export default function AkunUnit() {
   const [assignId, setAssignId] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   // Add unit
+  const [editing, setEditing] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_ACC);
   const [skFile, setSkFile] = useState(null);
@@ -54,8 +56,8 @@ export default function AkunUnit() {
   }, [search, clientFilter, statusFilter, provinsi, page]);
 
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
-  useEffect(() => { api.get("/clients").then(({ data }) => setClients(data)); }, []);
-  useEffect(() => { api.get("/surat-kuasa").then(({ data }) => setSkList(data)).catch(() => {}); }, []);
+  useEffect(() => { api.get("/clients").then(({ data }) => setClients(data)).catch((e) => toast.error(errMsg(e))); }, []);
+  useEffect(() => { api.get("/surat-kuasa").then(({ data }) => setSkList(data)).catch((e) => toast.error(errMsg(e))); }, []);
   useEffect(() => { setPage(1); }, [search, clientFilter, statusFilter, provinsi]);
 
   const openAssign = (id) => { setAssignId(id); setDialogOpen(true); };
@@ -69,13 +71,15 @@ export default function AkunUnit() {
     if (skFile && skFile.type !== "application/pdf") { toast.error("File Surat Kuasa harus PDF"); return; }
     setSaving(true);
     try {
-      await api.post("/akun", { ...form, latitude: null, longitude: null });
+      if (editing) await api.put(`/akun/${editing.id}`, form);
+      else await api.post("/akun", { ...form, latitude: null, longitude: null });
       if (skFile) {
         const fd = new FormData();
         fd.append("file", skFile);
-        await api.post(`/surat-kuasa/${form.surat_kuasa_id}/file`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+        try { await api.post(`/surat-kuasa/${form.surat_kuasa_id}/file`, fd); }
+        catch (error) { toast.error(`Unit sudah tersimpan, tetapi dokumen gagal diunggah: ${errMsg(error)}`); }
       }
-      toast.success("Unit ditambahkan");
+      toast.success(editing ? "Unit diperbarui" : "Unit ditambahkan");
       setAddOpen(false); setForm(EMPTY_ACC); setSkFile(null); load();
     } catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
   };
@@ -89,12 +93,12 @@ export default function AkunUnit() {
           <h1 className="font-heading text-2xl font-bold text-slate-900">Kontrak & Unit</h1>
           <p className="text-sm text-slate-500 mt-1">Tambah unit, kelola dokumen Surat Kuasa, dan tugaskan unit ke petugas.</p>
         </div>
-        <Button onClick={() => { setForm(EMPTY_ACC); setSkFile(null); setAddOpen(true); }} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="akun-add-unit-button">
+        <Button onClick={() => { setEditing(null); setForm(EMPTY_ACC); setSkFile(null); setAddOpen(true); }} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="akun-add-unit-button">
           <Plus className="w-4 h-4 mr-1" /> Tambah Unit Baru
         </Button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col lg:flex-row gap-3 lg:items-center">
+      <div className="brand-panel rounded-2xl border border-slate-200 p-4 flex flex-col lg:flex-row gap-3 lg:items-center">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari debitur, kontrak, polisi..." className="pl-9 rounded-xl" data-testid="akun-search-input" />
@@ -110,7 +114,7 @@ export default function AkunUnit() {
         <Input value={provinsi} onChange={(e) => setProvinsi(e.target.value)} placeholder="Wilayah/Provinsi" className="rounded-xl lg:w-40" data-testid="akun-wilayah-filter" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="brand-panel rounded-2xl border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
         ) : data.items.length === 0 ? (
@@ -149,7 +153,9 @@ export default function AkunUnit() {
                     </td>
                     <td className="px-3 py-3 text-slate-600 text-xs">{a.petugas_name || <span className="text-slate-300">-</span>}</td>
                     <td className="px-3 py-3"><StatusBadge map={ACCOUNT_STATUS} value={a.status} /></td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
+                      <button aria-label="Edit kontrak/unit" data-testid={`akun-edit-${a.id}`} className="p-1.5 text-blue-600" onClick={() => { setEditing(a); setForm({ ...EMPTY_ACC, ...a }); setSkFile(null); setAddOpen(true); }}><Pencil className="w-4 h-4" /></button>
+                      <DeleteDataButton endpoint={`/akun/${a.id}`} name={`${a.nomor_kontrak} — ${a.nama_debitur}`} onDeleted={() => { if (data.items.length === 1 && page > 1) setPage(page - 1); else load(); }} testId={`akun-delete-${a.id}`} />
                       {a.status === "BELUM_DITUGASKAN" ? (
                         <Button size="sm" onClick={() => openAssign(a.id)} className="rounded-lg bg-blue-600 hover:bg-blue-700 h-8" data-testid={`akun-tugaskan-${a.id}`}>
                           <ClipboardList className="w-3.5 h-3.5 mr-1" /> Tugaskan
@@ -178,12 +184,12 @@ export default function AkunUnit() {
       {/* Add Unit dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="akun-add-dialog">
-          <DialogHeader><DialogTitle className="font-heading">Tambah Unit Baru</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="font-heading">{editing ? "Edit Kontrak & Unit" : "Tambah Unit Baru"}</DialogTitle></DialogHeader>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div><Label>Pemberi Kuasa / Leasing *</Label>
               <Select value={form.client_id} onValueChange={(v) => setForm({ ...form, client_id: v, surat_kuasa_id: "" })}>
                 <SelectTrigger className="mt-1.5 rounded-xl" data-testid="akun-add-client-select"><SelectValue placeholder="Pilih pemberi kuasa" /></SelectTrigger>
-                <SelectContent>{clients.filter((c) => c.status === "aktif").map((c) => <SelectItem key={c.id} value={c.id}>{c.nama_perusahaan}</SelectItem>)}</SelectContent>
+                <SelectContent>{clients.filter((c) => c.status === "aktif" || c.id === form.client_id).map((c) => <SelectItem key={c.id} value={c.id}>{c.nama_perusahaan}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div><Label>Surat Kuasa *</Label>
@@ -245,7 +251,7 @@ export default function AkunUnit() {
               <iframe title="Surat Kuasa" src={fileUrl(preview.url)} className="w-full h-[70vh] rounded-xl border border-slate-200" />
               <div className="flex justify-end">
                 <a href={fileUrl(preview.url)} target="_blank" rel="noreferrer" download
-                  className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-4 py-2 rounded-xl" data-testid="akun-doc-download">
+                  className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-xl" data-testid="akun-doc-download">
                   <Download className="w-4 h-4" /> Download PDF
                 </a>
               </div>

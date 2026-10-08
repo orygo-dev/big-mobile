@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api, { errMsg, fileUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -17,12 +17,15 @@ export default function LaporanDetail() {
   const [review, setReview] = useState("");
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [error, setError] = useState("");
 
-  const load = () => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError("");
     api.get(`/laporan/${id}`).then(({ data }) => { setR(data); setReview(data.catatan_admin || ""); })
-      .catch((e) => toast.error(errMsg(e))).finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+      .catch((e) => { setError(errMsg(e)); toast.error(errMsg(e)); }).finally(() => setLoading(false));
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   const submitReview = async () => {
     setSaving(true);
@@ -30,9 +33,10 @@ export default function LaporanDetail() {
     catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
   };
 
-  if (loading || !r) return <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>;
+  if (loading) return <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>;
+  if (error || !r) return <div className="py-16 text-center space-y-4"><p role="alert">{error || "Laporan tidak ditemukan"}</p><Button onClick={load}>Coba lagi</Button><Button variant="outline" onClick={() => navigate("/admin/laporan")}>Kembali</Button></div>;
   const acc = r.account || {};
-  const mapsUrl = r.latitude ? `https://www.google.com/maps?q=${r.latitude},${r.longitude}` : null;
+  const mapsUrl = r.latitude != null && r.longitude != null ? `https://www.google.com/maps?q=${r.latitude},${r.longitude}` : null;
 
   return (
     <div className="space-y-5 animate-fade-in max-w-5xl">
@@ -50,7 +54,7 @@ export default function LaporanDetail() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="space-y-5">
-          <div className="bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="brand-panel rounded-2xl border border-slate-200 p-5">
             <h2 className="font-heading font-semibold text-slate-800 mb-3">Data Tugas</h2>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <div><dt className="text-xs text-slate-400">Debitur</dt><dd className="font-medium text-slate-700">{acc.nama_debitur}</dd></div>
@@ -63,7 +67,7 @@ export default function LaporanDetail() {
             </dl>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="brand-panel rounded-2xl border border-slate-200 p-5">
             <div className="flex items-center gap-2 mb-3"><User className="w-4 h-4 text-blue-600" /><h2 className="font-heading font-semibold text-slate-800">Petugas & Catatan</h2></div>
             <p className="text-sm text-slate-700 font-medium">{r.petugas_name}</p>
             <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(r.created_at)}</p>
@@ -71,7 +75,7 @@ export default function LaporanDetail() {
             {r.lokasi_alasan && <p className="text-xs text-amber-700 mt-2 bg-amber-50 rounded-lg p-2">Alasan lokasi: {r.lokasi_alasan}</p>}
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="brand-panel rounded-2xl border border-slate-200 p-5">
             <h2 className="font-heading font-semibold text-slate-800 mb-3">Review Admin</h2>
             <Textarea value={review} onChange={(e) => setReview(e.target.value)} placeholder="Tambahkan catatan/review untuk laporan ini..." className="rounded-xl" data-testid="laporan-review-input" />
             <Button onClick={submitReview} disabled={saving} className="mt-3 rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="laporan-review-save">
@@ -82,7 +86,7 @@ export default function LaporanDetail() {
         </div>
 
         <div className="space-y-5">
-          <div className="bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="brand-panel rounded-2xl border border-slate-200 p-5">
             <h2 className="font-heading font-semibold text-slate-800 mb-3">Foto Bukti ({r.photos?.length || 0})</h2>
             {r.photos?.length ? (
               <div className="grid grid-cols-2 gap-3">
@@ -95,13 +99,13 @@ export default function LaporanDetail() {
             ) : <p className="text-sm text-slate-400">Tidak ada foto.</p>}
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="brand-panel rounded-2xl border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-blue-600" /><h2 className="font-heading font-semibold text-slate-800">Lokasi</h2></div>
               {mapsUrl && <a href={mapsUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1" data-testid="laporan-maps-link">Google Maps <ExternalLink className="w-3 h-3" /></a>}
             </div>
             <MapView lat={r.latitude} lng={r.longitude} label={acc.nama_debitur} />
-            {r.latitude && <p className="text-xs text-slate-400 mt-2 font-mono">{r.latitude}, {r.longitude}</p>}
+            {r.latitude != null && r.longitude != null && <p className="text-xs text-slate-400 mt-2 font-mono">{r.latitude}, {r.longitude}</p>}
           </div>
         </div>
       </div>

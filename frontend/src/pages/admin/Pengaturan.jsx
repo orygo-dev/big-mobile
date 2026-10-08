@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import api, { errMsg } from "@/lib/api";
 import { useBranding } from "@/context/BrandingContext";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { formatDateTime } from "@/lib/constants";
 import { Building2, ScrollText, Loader2, Pencil, Upload, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import LoginAppearanceSettings from "@/components/LoginAppearanceSettings";
+import PasswordSettings from "@/components/PasswordSettings";
+import LoadError from "@/components/LoadError";
 
 export default function Pengaturan() {
   const { reload: reloadBranding } = useBranding();
@@ -21,11 +24,14 @@ export default function Pengaturan() {
   const [uploading, setUploading] = useState(false);
   const logoRef = useRef(null);
 
-  const load = () => {
-    api.get("/company").then(({ data }) => setCompany(data)).catch(() => {});
-    api.get("/audit-logs").then(({ data }) => setLogs(data)).catch(() => {});
-  };
-  useEffect(() => { Promise.resolve(load()).finally(() => setLoading(false)); }, []);
+  const [error, setError] = useState("");
+  const load = useCallback(() => {
+    setLoading(true); setError("");
+    return Promise.all([api.get("/company"),api.get("/audit-logs")])
+      .then(([profile,audit]) => {setCompany(profile.data);setLogs(audit.data);})
+      .catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => {load();}, [load]);
 
   const openEdit = () => {
     setForm({
@@ -60,18 +66,22 @@ export default function Pengaturan() {
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
+  if (error) return <LoadError message={error} onRetry={load} />;
+  if (loading || !company) return <div role="status" className="p-8 text-center">Memuat pengaturan…</div>;
   return (
-    <div className="space-y-5 animate-fade-in max-w-4xl">
+    <div className="space-y-5 animate-fade-in max-w-4xl [overflow-wrap:anywhere]">
       <div>
         <h1 className="font-heading text-2xl font-bold text-slate-900">Pengaturan</h1>
         <p className="text-sm text-slate-500 mt-1">Identitas aplikasi, informasi perusahaan, format nomor surat, dan log aktivitas.</p>
       </div>
 
       {/* Branding: logo + nama aplikasi */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+      <LoginAppearanceSettings company={company} onSaved={(data) => { setCompany(data); reloadBranding(); }} />
+
+      <div className="brand-panel rounded-2xl border border-slate-200 p-5">
         <div className="flex items-center gap-2 mb-4"><ImageIcon className="w-5 h-5 text-blue-600" /><h2 className="font-heading font-semibold text-slate-800">Identitas Aplikasi</h2></div>
         <div className="flex items-center gap-5 flex-wrap">
-          <div className="w-28 h-28 rounded-2xl bg-slate-900 flex items-center justify-center overflow-hidden" data-testid="logo-preview">
+          <div className="w-28 h-28 rounded-2xl bg-white border border-blue-100 flex items-center justify-center overflow-hidden" data-testid="logo-preview">
             {company?.logo ? <img src={company.logo} alt="Logo" className="w-full h-full object-contain p-2" /> : <span className="text-slate-500 text-xs">Belum ada logo</span>}
           </div>
           <div>
@@ -85,7 +95,7 @@ export default function Pengaturan() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+      <div className="brand-panel rounded-2xl border border-slate-200 p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-blue-600" /><h2 className="font-heading font-semibold text-slate-800">Profil Perusahaan</h2></div>
           {company && <Button variant="outline" size="sm" onClick={openEdit} className="rounded-xl" data-testid="company-edit-button"><Pencil className="w-4 h-4 mr-1" /> Edit</Button>}
@@ -105,7 +115,7 @@ export default function Pengaturan() {
         ) : <Loader2 className="w-5 h-5 animate-spin text-blue-600" />}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+      <div className="brand-panel rounded-2xl border border-slate-200 p-5">
         <div className="flex items-center gap-2 mb-4"><ScrollText className="w-5 h-5 text-blue-600" /><h2 className="font-heading font-semibold text-slate-800">Audit Log</h2></div>
         {loading ? (
           <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
@@ -133,6 +143,7 @@ export default function Pengaturan() {
         )}
       </div>
 
+      <PasswordSettings />
       {form && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" data-testid="company-dialog">

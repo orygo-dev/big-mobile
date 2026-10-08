@@ -37,8 +37,6 @@ async def seed_all(db):
             "password_hash": _hash(admin_password), "status": "aktif",
             "created_at": now_iso(), "updated_at": now_iso(),
         })
-    else:
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": _hash(admin_password), "company_id": company_id, "role": "admin"}})
 
     # demo admin (matches spec README credential)
     if not await db.users.find_one({"email": "admin@demo.com"}):

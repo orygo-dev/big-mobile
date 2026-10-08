@@ -6,12 +6,13 @@ import { errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff, Layers, ArrowRight, LockKeyhole } from "lucide-react";
+import LoginBackground from "@/components/LoginBackground";
 import { toast } from "sonner";
 
 export default function Login() {
   const { login } = useAuth();
-  const { appName, logo } = useBranding();
+  const { appName, logo, loginBackground } = useBranding();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,35 +37,36 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 30%, #1E3A8A 0, transparent 40%), radial-gradient(circle at 80% 70%, #2563EB 0, transparent 40%)" }} />
-      <div className="relative w-full max-w-md">
-        <div className="flex items-center justify-center mb-6">
+    <main className="login-shell">
+      <LoginBackground preset={loginBackground.preset} imageUrl={loginBackground.image_url} />
+      <section className="login-card relative w-full max-w-md" aria-labelledby="login-heading">
+        <div className="flex items-center justify-center mb-7">
           {logo ? (
-            <img src={logo} alt={appName} className="h-20 w-auto max-w-[260px] object-contain" data-testid="login-logo" />
+            <img src={logo} alt={appName} className="h-14 w-auto max-w-[260px] object-contain" data-testid="login-logo" />
           ) : (
-            <h1 className="font-heading text-3xl font-extrabold text-white tracking-tight">{appName}</h1>
+            <div className="flex items-center gap-3 min-w-0"><span className="brand-mark p-2.5 rounded-xl shrink-0"><Layers className="w-6 h-6" aria-hidden="true" /></span><span className="font-heading text-2xl font-semibold text-slate-900 tracking-tight break-words min-w-0">{appName}</span></div>
           )}
         </div>
 
-        <div className="bg-white rounded-3xl shadow-2xl p-7 animate-fade-in">
-          <h2 className="font-heading text-xl font-bold text-slate-900">Masuk ke Akun</h2>
-          <p className="text-sm text-slate-500 mt-1 mb-6">Gunakan email dan password Anda.</p>
+        <div>
+          <p className="login-eyebrow">WORKSPACE OPERASIONAL</p>
+          <h1 id="login-heading" className="font-heading text-3xl font-semibold text-slate-900 tracking-tight mt-2">Selamat datang kembali</h1>
+          <p className="text-sm text-slate-500 mt-2 mb-7">Masuk untuk mengelola penugasan dan laporan lapangan Anda.</p>
 
           <form onSubmit={submit} className="space-y-4">
             <div>
               <Label htmlFor="email" className="text-slate-700">Email</Label>
               <Input id="email" data-testid="login-email-input" type="email" value={email}
                 onChange={(e) => setEmail(e.target.value)} placeholder="nama@perusahaan.com"
-                required className="mt-1.5 h-11 rounded-xl" />
+                autoComplete="username" required className="mt-1.5 h-11 rounded-xl" />
             </div>
             <div>
               <Label htmlFor="password" className="text-slate-700">Password</Label>
               <div className="relative mt-1.5">
                 <Input id="password" data-testid="login-password-input" type={show ? "text" : "password"}
                   value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
-                  required className="h-11 rounded-xl pr-11" />
-                <button type="button" onClick={() => setShow(!show)}
+                  autoComplete="current-password" required className="h-11 rounded-xl pr-11" />
+                <button type="button" onClick={() => setShow(!show)} aria-label={show ? "Sembunyikan password" : "Tampilkan password"}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                   {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -72,24 +74,20 @@ export default function Login() {
             </div>
 
             {error && (
-              <div data-testid="login-error" className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+              <div role="alert" data-testid="login-error" className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
                 {error}
               </div>
             )}
 
             <Button type="submit" data-testid="login-submit-button" disabled={loading}
-              className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Masuk"}
+              className="brand-action w-full h-12 rounded-xl font-semibold">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Masuk ke aplikasi <ArrowRight className="w-4 h-4" /></>}
             </Button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-100 text-xs text-slate-500 space-y-1">
-            <p className="font-semibold text-slate-600">Akun demo:</p>
-            <p>Admin: <span className="font-mono">admin@demo.com / admin123</span></p>
-            <p>Petugas: <span className="font-mono">petugas@demo.com / petugas123</span></p>
-          </div>
+          <p className="flex items-center justify-center gap-2 mt-6 pt-5 border-t border-blue-50 text-xs text-slate-500"><LockKeyhole className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />Akses hanya untuk pengguna terdaftar</p>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

@@ -16,8 +16,6 @@ const STATUS_OPTIONS = [
   "PINDAH_ALAMAT", "UNIT_TIDAK_ADA", "LAINNYA",
 ];
 
-function pad(n) { return String(n).padStart(2, "0"); }
-const MONTHS = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
 export default function BuatLaporan() {
   const { accountId } = useParams();
@@ -32,15 +30,21 @@ export default function BuatLaporan() {
   const [coords, setCoords] = useState(null); // {lat, lng}
   const [gpsState, setGpsState] = useState("idle"); // idle | loading | ok | denied
   const [gpsReason, setGpsReason] = useState("");
-  const [now] = useState(new Date());
   const [photos, setPhotos] = useState([]); // [{blob, url}]
+  const [processingPhoto, setProcessingPhoto] = useState(false);
+  const photoUrls = useRef(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const fileRef = useRef(null);
 
+  useEffect(() => () => {
+    photoUrls.current.forEach((url) => URL.revokeObjectURL(url));
+  }, []);
+
   useEffect(() => {
     api.get(`/my/tugas/${accountId}`).then(({ data }) => {
       setData(data);
+      if (data.can_report === false) { toast.error(data.blocked_reason); navigate(`/app/tugas/${accountId}`); return; }
       if (data.existing_report) { toast.info("Laporan untuk tugas ini sudah dikirim."); navigate(`/app/tugas/${accountId}`); }
     }).catch((e) => { toast.error(errMsg(e)); navigate("/app/tugas"); }).finally(() => setLoading(false));
     captureGps();
@@ -48,6 +52,8 @@ export default function BuatLaporan() {
   }, [accountId]);
 
   const captureGps = () => {
+    if (processingPhoto || photos.length) { toast.info("Hapus foto terlebih dahulu sebelum memperbarui GPS agar watermark tetap sesuai."); return; }
+    setCoords(null);
     if (!navigator.geolocation) { setGpsState("denied"); return; }
     setGpsState("loading");
     navigator.geolocation.getCurrentPosition(
@@ -58,18 +64,24 @@ export default function BuatLaporan() {
   };
 
   const watermarkText = () => {
-    const d = now;
+    const d = new Date();
     return [
-      `${pad(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())} WIB`,
+      `${new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "long", timeStyle: "short" }).format(d)} WIB`,
       `Petugas: ${user?.name}`,
       data?.letter_nomor || "",
       coords ? `${coords.lat}, ${coords.lng}` : "Lokasi tidak tersedia",
     ];
   };
 
-  const processPhoto = (file) => new Promise((resolve) => {
+  const processPhoto = (file) => new Promise((resolve, reject) => {
     const img = new Image();
+    const sourceUrl = URL.createObjectURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(sourceUrl);
+      reject(new Error("Foto tidak dapat dibaca. Pilih foto JPG, PNG, atau WEBP."));
+    };
     img.onload = () => {
+      URL.revokeObjectURL(sourceUrl);
       const maxW = 1280;
       const scale = Math.min(1, maxW / img.width);
       const w = Math.round(img.width * scale);
@@ -88,21 +100,40 @@ export default function BuatLaporan() {
       ctx.font = `600 ${fs}px Inter, sans-serif`;
       ctx.textBaseline = "top";
       lines.forEach((ln, i) => ctx.fillText(ln, pad2, h - boxH + pad2 + i * (fs + 6)));
-      canvas.toBlob((blob) => resolve({ blob, url: URL.createObjectURL(blob) }), "image/jpeg", 0.85);
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error("Foto gagal diproses")); return; }
+        const url = URL.createObjectURL(blob);
+        photoUrls.current.add(url);
+        resolve({ blob, url });
+      }, "image/jpeg", 0.85);
     };
-    img.src = URL.createObjectURL(file);
+    img.src = sourceUrl;
   });
 
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    if (processingPhoto) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { toast.error("Pilih foto JPG, PNG, atau WEBP"); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error("Ukuran foto maksimal 8MB"); return; }
     if (photos.length >= 5) { toast.error("Maksimal 5 foto"); return; }
-    const processed = await processPhoto(file);
-    setPhotos((p) => [...p, processed]);
+    setProcessingPhoto(true);
+    try {
+      const processed = await processPhoto(file);
+      setPhotos((p) => [...p, processed]);
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setProcessingPhoto(false);
+    }
   };
 
-  const removePhoto = (i) => setPhotos((p) => p.filter((_, idx) => idx !== i));
+  const removePhoto = (i) => {
+    URL.revokeObjectURL(photos[i].url);
+    photoUrls.current.delete(photos[i].url);
+    setPhotos((p) => p.filter((_, idx) => idx !== i));
+  };
 
   const validateStep1 = () => {
     if (!status) { toast.error("Pilih hasil kunjungan"); return false; }
@@ -124,7 +155,8 @@ export default function BuatLaporan() {
   const back = () => { if (step === 3 && status !== "UNIT_DITEMUKAN") setStep(1); else setStep(step - 1); };
 
   const submit = async () => {
-    if (submitting) return;
+    if (submitting || processingPhoto || !validateStep1()) return;
+    if (status === "UNIT_DITEMUKAN" && photos.length < 1) { toast.error("Foto bukti wajib minimal 1"); return; }
     setSubmitting(true);
     try {
       const fd = new FormData();
@@ -135,9 +167,13 @@ export default function BuatLaporan() {
       if (coords) { fd.append("latitude", coords.lat); fd.append("longitude", coords.lng); }
       if (gpsState !== "ok") fd.append("lokasi_alasan", gpsReason);
       photos.forEach((p, i) => fd.append("photos", p.blob, `foto_${i + 1}.jpg`));
-      await api.post("/laporan", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      await api.post("/laporan", fd, {timeout: 120000});
       setDone(true);
     } catch (e) {
+      try {
+        const latest = await api.get('/my/riwayat', {params: {assignment_id: data.assignment_id, page: 1, limit: 1}});
+        if (latest.data.some((report) => report.assignment_id === data.assignment_id)) {setDone(true); return;}
+      } catch { /* Keep the form and photos available when verification fails. */ }
       toast.error(errMsg(e));
     } finally {
       setSubmitting(false);
@@ -159,14 +195,14 @@ export default function BuatLaporan() {
 
   return (
     <div className="min-h-screen pb-28">
-      <div className="bg-slate-900 text-white px-5 pt-8 pb-5 rounded-b-3xl sticky top-0 z-10">
+      <div className="brand-hero text-white px-5 pt-8 pb-5 sticky top-0 z-10">
         <button onClick={() => step === 1 ? navigate(`/app/tugas/${accountId}`) : back()} className="flex items-center gap-1.5 text-sm text-slate-300 mb-3" data-testid="laporan-back">
           <ArrowLeft className="w-4 h-4" /> {step === 1 ? "Batal" : "Sebelumnya"}
         </button>
         <h1 className="font-heading text-xl font-bold">Buat Laporan</h1>
         <p className="text-slate-400 text-xs mt-0.5">{data.account.nama_debitur} · {data.account.nomor_polisi}</p>
         <div className="flex gap-2 mt-4">
-          {[1, 2, 3].map((s) => <div key={s} className={`h-1.5 flex-1 rounded-full ${step >= s ? "bg-blue-500" : "bg-slate-700"}`} />)}
+          {[1, 2, 3].map((s) => <div key={s} className={`h-1.5 flex-1 rounded-full ${step >= s ? "brand-step-active" : "brand-step-inactive"}`} />)}
         </div>
       </div>
 
@@ -190,7 +226,7 @@ export default function BuatLaporan() {
               <Textarea value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Jelaskan kondisi di lapangan..." className="mt-1.5 rounded-2xl min-h-24" data-testid="laporan-catatan-input" />
             </div>
 
-            <div className="bg-white rounded-2xl p-4 border border-slate-100">
+            <div className="brand-panel rounded-2xl p-4 border border-slate-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-blue-600" /><span className="text-sm font-medium text-slate-700">Lokasi Saat Ini</span></div>
                 {gpsState === "loading" && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
@@ -198,7 +234,7 @@ export default function BuatLaporan() {
                 {gpsState === "denied" && <button onClick={captureGps} className="text-xs text-blue-600 flex items-center gap-1" data-testid="laporan-gps-retry"><RefreshCw className="w-3 h-3" /> Coba lagi</button>}
               </div>
               <div className="text-xs text-slate-500 mt-2 space-y-0.5">
-                <p>Tanggal: {pad(now.getDate())} {MONTHS[now.getMonth()]} {now.getFullYear()} · Jam: {pad(now.getHours())}:{pad(now.getMinutes())} WIB</p>
+                <p>{new Intl.DateTimeFormat("id-ID", {timeZone: "Asia/Jakarta", dateStyle: "long", timeStyle: "short"}).format(new Date())} WIB</p>
                 {gpsState === "ok" && coords && <p className="font-mono text-slate-600">Lat: {coords.lat}, Lng: {coords.lng}</p>}
               </div>
               {gpsState === "denied" && (
@@ -228,8 +264,8 @@ export default function BuatLaporan() {
                 </div>
               ))}
               {photos.length < 5 && (
-                <button onClick={() => fileRef.current?.click()} data-testid="petugas-take-photo-button"
-                  className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 bg-white active:scale-95 transition-transform">
+                <button disabled={processingPhoto} onClick={() => fileRef.current?.click()} data-testid="petugas-take-photo-button"
+                  className="aspect-square rounded-2xl border-2 border-dashed border-blue-200 flex flex-col items-center justify-center text-blue-600 bg-white active:scale-95 transition-transform">
                   {photos.length === 0 ? <Camera className="w-8 h-8" /> : <Plus className="w-8 h-8" />}
                   <span className="text-xs mt-1 font-medium">{photos.length === 0 ? "Ambil Foto" : "Tambah Foto"}</span>
                 </button>
@@ -241,10 +277,10 @@ export default function BuatLaporan() {
         {step === 3 && (
           <div className="space-y-4 animate-fade-in">
             <h2 className="font-heading font-semibold text-slate-800">Review Laporan</h2>
-            <div className="bg-white rounded-2xl p-4 border border-slate-100 space-y-3">
+            <div className="brand-panel rounded-2xl p-4 border border-slate-100 space-y-3">
               <div className="flex items-center justify-between"><span className="text-xs text-slate-400">Status Temuan</span><StatusBadge map={REPORT_STATUS} value={status} /></div>
               <div className="flex items-center justify-between"><span className="text-xs text-slate-400">No. Surat Tugas</span><span className="text-sm font-mono text-slate-700">{data.letter_nomor}</span></div>
-              <div className="flex items-center justify-between"><span className="text-xs text-slate-400">Tanggal / Jam</span><span className="text-sm text-slate-700">{pad(now.getDate())}/{pad(now.getMonth()+1)}/{now.getFullYear()} {pad(now.getHours())}:{pad(now.getMinutes())}</span></div>
+              <div className="flex items-center justify-between"><span className="text-xs text-slate-400">Tanggal / Jam</span><span className="text-sm text-slate-700">{new Intl.DateTimeFormat("id-ID", {timeZone: "Asia/Jakarta", dateStyle: "short", timeStyle: "short"}).format(new Date())} WIB</span></div>
               <div className="flex items-center justify-between"><span className="text-xs text-slate-400">Lokasi</span><span className="text-sm font-mono text-slate-700">{coords ? `${coords.lat}, ${coords.lng}` : "Manual"}</span></div>
               <div><span className="text-xs text-slate-400">Catatan</span><p className="text-sm text-slate-700 mt-1">{catatan}</p></div>
             </div>
@@ -260,13 +296,13 @@ export default function BuatLaporan() {
         )}
       </div>
 
-      <div className="fixed bottom-0 w-full max-w-[460px] p-4 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
+      <div className="brand-footer fixed bottom-0 w-full max-w-[460px] p-4 z-20">
         {step < 3 ? (
-          <button onClick={next} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-2xl shadow-lg active:scale-[0.98] transition-all" data-testid="laporan-next-button">
+          <button disabled={processingPhoto} onClick={next} className="brand-action w-full font-semibold py-3.5 rounded-2xl active:scale-[0.98] transition-all" data-testid="laporan-next-button">
             Lanjut
           </button>
         ) : (
-          <button onClick={submit} disabled={submitting} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70" data-testid="petugas-submit-report-button">
+          <button onClick={submit} disabled={submitting} className="brand-action w-full font-semibold py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70" data-testid="petugas-submit-report-button">
             {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Send className="w-5 h-5" /> Kirim Laporan</>}
           </button>
         )}

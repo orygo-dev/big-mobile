@@ -65,7 +65,7 @@ export default function SuratKuasaDetail() {
         <ArrowLeft className="w-4 h-4" /> Kembali
       </button>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-6">
+      <div className="brand-panel rounded-2xl border border-slate-200 p-6">
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3">
@@ -92,7 +92,7 @@ export default function SuratKuasaDetail() {
           {sk.file_url ? (
             <>
               <Button variant="outline" onClick={() => setPreviewOpen(true)} className="rounded-xl" data-testid="sk-preview-button"><FileText className="w-4 h-4 mr-1 text-blue-600" /> Preview Surat Kuasa</Button>
-              <a href={fileUrl(sk.file_url)} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-4 py-2 rounded-xl" data-testid="sk-download-button"><Download className="w-4 h-4" /> Download</a>
+              <a href={fileUrl(sk.file_url)} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-xl" data-testid="sk-download-button"><Download className="w-4 h-4" /> Download</a>
               <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} className="rounded-xl" data-testid="sk-replace-button">{uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />} Ganti Dokumen</Button>
             </>
           ) : (
@@ -106,7 +106,7 @@ export default function SuratKuasaDetail() {
         <p className="text-sm text-slate-400 mt-0.5">Tambah unit baru dilakukan di menu Kontrak &amp; Unit.</p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="brand-panel rounded-2xl border border-slate-200 overflow-hidden">
         {sk.accounts.length === 0 ? (
           <EmptyState icon={Car} title="Belum ada unit pada Surat Kuasa ini" desc="Tambahkan unit dari menu Kontrak & Unit." />
         ) : (

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import api, { errMsg } from "@/lib/api";
+import api, { errMsg, fileUrl } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ACCOUNT_STATUS } from "@/lib/constants";
 import { ArrowLeft, MapPin, Navigation, FileText, Phone, Loader2 } from "lucide-react";
@@ -21,7 +21,7 @@ export default function DetailTugas() {
   const a = data.account;
 
   const openMaps = () => {
-    const url = a.latitude ? `https://www.google.com/maps?q=${a.latitude},${a.longitude}` : `https://www.google.com/maps/search/${encodeURIComponent(a.alamat)}`;
+    const url = a.latitude != null && a.longitude != null ? `https://www.google.com/maps?q=${a.latitude},${a.longitude}` : `https://www.google.com/maps/search/${encodeURIComponent(a.alamat)}`;
     window.open(url, "_blank");
   };
 
@@ -34,7 +34,7 @@ export default function DetailTugas() {
 
   return (
     <div>
-      <div className="bg-slate-900 text-white px-5 pt-8 pb-5 rounded-b-3xl sticky top-0 z-10">
+      <div className="brand-hero text-white px-5 pt-8 pb-5 sticky top-0 z-10">
         <button onClick={() => navigate("/app/tugas")} className="flex items-center gap-1.5 text-sm text-slate-300 mb-3" data-testid="detail-tugas-back"><ArrowLeft className="w-4 h-4" /> Kembali</button>
         <div className="flex items-center justify-between">
           <div><h1 className="font-heading text-xl font-bold">{a.nama_debitur}</h1><p className="text-slate-400 text-xs font-mono mt-0.5">{data.letter_nomor}</p></div>
@@ -43,15 +43,17 @@ export default function DetailTugas() {
       </div>
 
       <div className="px-4 mt-4 space-y-4">
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+        <div className="brand-panel rounded-2xl p-4 shadow-sm border border-slate-100">
           <h2 className="font-heading font-semibold text-slate-800 text-sm mb-2">Informasi Tugas</h2>
           <Row label="No. Surat Tugas" value={data.letter_nomor} mono />
           <Row label="No. Surat Kuasa" value={data.surat_kuasa_nomor} mono />
           <Row label="Klien" value={data.client_name} />
           <Row label="No. Kontrak" value={a.nomor_kontrak} mono />
+          <Row label="Mulai berlaku" value={data.valid_from} />
+          <Row label="Berlaku sampai" value={data.valid_until || "Tidak ditentukan"} />
         </div>
 
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+        <div className="brand-panel rounded-2xl p-4 shadow-sm border border-slate-100">
           <h2 className="font-heading font-semibold text-slate-800 text-sm mb-2">Data Unit</h2>
           <Row label="No. Polisi" value={a.nomor_polisi} mono />
           <Row label="Jenis Unit" value={a.jenis_kendaraan} />
@@ -60,7 +62,7 @@ export default function DetailTugas() {
           <Row label="Warna" value={a.warna} />
         </div>
 
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+        <div className="brand-panel rounded-2xl p-4 shadow-sm border border-slate-100">
           <h2 className="font-heading font-semibold text-slate-800 text-sm mb-2">Kontak & Alamat</h2>
           <div className="flex items-start gap-2 text-sm text-slate-700 py-2">
             <MapPin className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
@@ -79,16 +81,19 @@ export default function DetailTugas() {
         <button onClick={openMaps} className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 font-semibold py-3.5 rounded-2xl active:scale-[0.98] transition-transform" data-testid="detail-tugas-maps-button">
           <Navigation className="w-4 h-4 text-blue-600" /> Buka Maps
         </button>
+        {data.surat_kuasa_file && <a href={fileUrl(data.surat_kuasa_file)} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 py-3.5 font-semibold text-blue-700" data-testid="detail-tugas-surat-kuasa"><FileText className="h-4 w-4" />Buka Surat Kuasa</a>}
       </div>
 
-      <div className="fixed bottom-0 w-full max-w-[460px] p-4 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
+      <div className="brand-footer fixed bottom-0 w-full max-w-[460px] p-4 z-50">
         {data.existing_report ? (
           <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold py-3.5 rounded-2xl text-center text-sm">
             ✓ Laporan sudah dikirim
           </div>
+        ) : data.can_report === false ? (
+          <p className="bg-amber-50 text-amber-800 rounded-2xl p-3 text-sm text-center">{data.blocked_reason}</p>
         ) : (
           <button onClick={() => navigate(`/app/tugas/${accountId}/laporan`)}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            className="brand-action w-full font-semibold py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             data-testid="detail-tugas-buat-laporan-button">
             <FileText className="w-5 h-5" /> Buat Laporan
           </button>

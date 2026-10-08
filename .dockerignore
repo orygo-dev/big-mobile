@@ -1,0 +1,13 @@
+.git
+.local
+.venv
+**/node_modules
+**/build
+**/__pycache__
+**/.env
+**/.env.*
+deploy/*.env
+deploy/secrets
+**/*.log
+test_reports
+memory

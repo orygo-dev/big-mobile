@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import DeleteDataButton from "@/components/DeleteDataButton";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -25,13 +26,13 @@ export default function SuratKuasa() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     api.get("/surat-kuasa", { params: { search: search || undefined } })
       .then(({ data }) => setItems(data)).catch((e) => toast.error(errMsg(e))).finally(() => setLoading(false));
-  };
-  useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [search]);
-  useEffect(() => { api.get("/clients").then(({ data }) => setClients(data.filter((c) => c.status === "aktif"))); }, []);
+  }, [search]);
+  useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
+  useEffect(() => { api.get("/clients").then(({ data }) => setClients(data.filter((c) => c.status === "aktif"))).catch((e) => toast.error(errMsg(e))); }, []);
 
   const save = async () => {
     if (!form.nomor.trim() || !form.client_id) { toast.error("Nomor dan klien wajib diisi"); return; }
@@ -65,23 +66,23 @@ export default function SuratKuasa() {
       {loading ? (
         <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
       ) : items.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200"><EmptyState icon={FileText} title="Belum ada Surat Kuasa" desc="Tambahkan surat kuasa pertama." /></div>
+        <div className="brand-panel rounded-2xl border border-slate-200"><EmptyState icon={FileText} title="Belum ada Surat Kuasa" desc="Tambahkan surat kuasa pertama." /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {items.map((sk) => (
-            <button key={sk.id} onClick={() => navigate(`/admin/surat-kuasa/${sk.id}`)} data-testid={`sk-card-${sk.id}`}
-              className="text-left bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all group">
+            <article key={sk.id} data-testid={`sk-card-${sk.id}`}
+              className="text-left brand-panel rounded-2xl border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all group">
               <div className="flex items-start justify-between">
                 <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center"><FileText className="w-5 h-5 text-blue-600" /></div>
                 <StatusBadge map={SK_STATUS} value={sk.status} />
               </div>
-              <p className="font-mono text-sm font-semibold text-slate-800 mt-3">{sk.nomor}</p>
+              <button onClick={() => navigate(`/admin/surat-kuasa/${sk.id}`)} className="font-mono text-sm font-semibold text-blue-700 mt-3 hover:underline">{sk.nomor}</button>
               <p className="text-sm text-slate-500 mt-0.5">{sk.client_name}</p>
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
                 <span className="text-xs text-slate-400">{sk.total_akun} akun · berlaku s/d {formatDate(sk.tanggal_berakhir)}</span>
-                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600" />
+                <DeleteDataButton endpoint={`/surat-kuasa/${sk.id}`} name={sk.nomor} onDeleted={load} testId={`sk-delete-${sk.id}`} />
               </div>
-            </button>
+            <div className="mt-3"><Button variant="outline" size="sm" onClick={() => navigate(`/admin/surat-kuasa/${sk.id}`)}>Detail & Edit <ChevronRight className="w-4 h-4 ml-1" /></Button></div></article>
           ))}
         </div>
       )}

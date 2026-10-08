@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/constants";
-import { Shield, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import BrandIdentity from "@/components/BrandIdentity";
 
 export default function Verify() {
   const { id, code } = useParams();
@@ -18,14 +19,13 @@ export default function Verify() {
   const statusLabel = data?.doc_status || (data?.valid ? "VALID" : (data?.status || "TIDAK VALID"));
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+    <div className="brand-login min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center"><Shield className="w-5 h-5 text-white" /></div>
-          <span className="font-heading font-bold text-white text-lg">FieldCollector</span>
+          <BrandIdentity />
         </div>
 
-        <div className="bg-white rounded-3xl shadow-2xl p-7 animate-fade-in">
+        <div className="brand-panel brand-login-card p-6 sm:p-7 animate-fade-in">
           {loading ? (
             <div className="py-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
           ) : (

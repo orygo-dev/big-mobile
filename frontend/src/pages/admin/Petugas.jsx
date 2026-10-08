@@ -1,3 +1,4 @@
+import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useState } from "react";
 import api, { errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -57,11 +58,11 @@ export default function Petugas() {
       {loading ? (
         <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
       ) : items.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200"><EmptyState icon={Users} title="Belum ada petugas" desc="Tambahkan petugas lapangan." /></div>
+        <div className="brand-panel rounded-2xl border border-slate-200"><EmptyState icon={Users} title="Belum ada petugas" desc="Tambahkan petugas lapangan." /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {items.map((p) => (
-            <div key={p.id} className="bg-white rounded-2xl border border-slate-200 p-5" data-testid={`petugas-card-${p.id}`}>
+            <div key={p.id} className="brand-panel rounded-2xl border border-slate-200 p-5" data-testid={`petugas-card-${p.id}`}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">{p.name?.[0]?.toUpperCase()}</div>
@@ -70,7 +71,7 @@ export default function Petugas() {
                     <p className="text-xs text-slate-400 font-mono">{p.petugas_code}</p>
                   </div>
                 </div>
-                <button onClick={() => openEdit(p)} className="text-slate-400 hover:text-blue-600 p-1" data-testid={`petugas-edit-${p.id}`}><Pencil className="w-4 h-4" /></button>
+                <div className="flex items-center"><DeleteDataButton endpoint={`/petugas/${p.id}`} name={p.name} onDeleted={load} testId={`petugas-delete-${p.id}`} /><button aria-label="Edit petugas" onClick={() => openEdit(p)} className="text-slate-400 hover:text-blue-600 p-1" data-testid={`petugas-edit-${p.id}`}><Pencil className="w-4 h-4" /></button></div>
               </div>
               <div className="mt-4 space-y-1 text-sm text-slate-600">
                 <p>{p.email}</p>

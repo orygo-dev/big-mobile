@@ -1,0 +1,23 @@
+# Run with a compatible official runtime after creating .local/db-compatible7 and .local/logs.
+# Use a NEW database directory. These options do not convert existing Snappy files.
+# Use a compatible official MongoDB runtime; zlib does not fix history-store CPU incompatibility.
+replication:
+  replSetName: rs0
+  oplogSizeMB: 64
+storage:
+  dbPath: .local/db-compatible7
+  wiredTiger:
+    engineConfig:
+      cacheSizeGB: 0.5
+      journalCompressor: zlib
+    collectionConfig:
+      blockCompressor: zlib
+systemLog:
+  destination: file
+  path: .local/logs/mongodb-compatible.log
+  logAppend: true
+net:
+  bindIp: 127.0.0.1
+  port: 27017
+  compression:
+    compressors: zlib

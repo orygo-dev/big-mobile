@@ -36,11 +36,11 @@ export default function Penugasan() {
       {loading ? (
         <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
       ) : letters.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200"><EmptyState icon={ClipboardList} title="Belum ada penugasan" desc="Klik Buat Penugasan untuk menugaskan satu unit kepada seorang petugas." /></div>
+        <div className="brand-panel rounded-2xl border border-slate-200"><EmptyState icon={ClipboardList} title="Belum ada penugasan" desc="Klik Buat Penugasan untuk menugaskan satu unit kepada seorang petugas." /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {letters.map((l) => (
-            <div key={l.id} className="bg-white rounded-2xl border border-slate-200 p-5" data-testid={`penugasan-card-${l.id}`}>
+            <div key={l.id} className="brand-panel rounded-2xl border border-slate-200 p-5" data-testid={`penugasan-card-${l.id}`}>
               <div className="flex items-start justify-between">
                 <p className="font-mono text-sm font-semibold text-slate-800">{l.document_number || l.nomor}</p>
                 <StatusBadge map={LETTER_STATUS} value={l.status} />

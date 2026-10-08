@@ -39,7 +39,7 @@ export default function LaporanPetugas() {
         <p className="text-sm text-slate-500 mt-1">Hasil kunjungan lapangan dari petugas.</p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col lg:flex-row gap-3">
+      <div className="brand-panel rounded-2xl border border-slate-200 p-4 flex flex-col lg:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari debitur, polisi, surat tugas..." className="pl-9 rounded-xl" data-testid="laporan-search-input" />
@@ -55,7 +55,7 @@ export default function LaporanPetugas() {
         <Input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} className="rounded-xl lg:w-40" data-testid="laporan-tanggal-filter" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="brand-panel rounded-2xl border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
         ) : items.length === 0 ? (
@@ -85,7 +85,7 @@ export default function LaporanPetugas() {
                     <td className="px-3 py-3 text-slate-700">{r.nama_debitur}</td>
                     <td className="px-3 py-3 font-mono text-slate-700">{r.nomor_polisi}</td>
                     <td className="px-3 py-3"><StatusBadge map={REPORT_STATUS} value={r.status} /></td>
-                    <td className="px-3 py-3">{r.latitude ? <MapPin className="w-4 h-4 text-emerald-600" /> : <span className="text-xs text-slate-400">-</span>}</td>
+                    <td className="px-3 py-3">{r.latitude != null && r.longitude != null ? <MapPin className="w-4 h-4 text-emerald-600" /> : <span className="text-xs text-slate-400">-</span>}</td>
                     <td className="px-3 py-3">
                       {r.photos?.length ? <span className="inline-flex items-center gap-1 text-xs text-slate-600"><ImageIcon className="w-3.5 h-3.5" />{r.photos.length}</span> : <span className="text-xs text-slate-400">-</span>}
                     </td>

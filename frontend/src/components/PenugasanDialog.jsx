@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -14,6 +14,7 @@ import { toast } from "sonner";
 // `accountId` (optional) preselects a unit (e.g. from the Kontrak & Unit page).
 export default function PenugasanDialog({ open, onOpenChange, accountId = null, onSuccess }) {
   const navigate = useNavigate();
+  const requestKey = useRef(null);
   const [petugasList, setPetugasList] = useState([]);
   const [unitList, setUnitList] = useState([]);
   const [petugasId, setPetugasId] = useState("");
@@ -22,23 +23,30 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
   const [validUntil, setValidUntil] = useState("");
   const [catatan, setCatatan] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [optionsError, setOptionsError] = useState("");
   const [result, setResult] = useState(null); // success payload
 
   useEffect(() => {
     if (!open) return;
+    requestKey.current = crypto.randomUUID();
     setResult(null);
+    setPetugasId(""); setCatatan(""); setValidUntil("");
+    setValidFrom(new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date()));
     setUnitId(accountId || "");
-    api.get("/petugas").then(({ data }) => setPetugasList(data.filter((p) => p.status === "aktif"))).catch(() => {});
-    // Only load selectable units when none is preselected
-    if (!accountId) {
-      api.get("/akun", { params: { status: "BELUM_DITUGASKAN", limit: 1000, page: 1 } })
-        .then(({ data }) => setUnitList(data.items || [])).catch(() => {});
-    }
+    setLoadingOptions(true); setOptionsError(""); setPetugasList([]); setUnitList([]);
+    let cancelled = false;
+    Promise.all([api.get("/petugas"), accountId ? Promise.resolve(null) : api.get("/akun", {params: {available: true, limit: 1000, page: 1}})])
+      .then(([officers, units]) => { if (!cancelled) {setPetugasList(officers.data.filter((p) => p.status === "aktif")); setUnitList(units?.data.items || []);} })
+      .catch((e) => {if (!cancelled) setOptionsError(errMsg(e));})
+      .finally(() => {if (!cancelled) setLoadingOptions(false);});
+    return () => {cancelled = true;};
   }, [open, accountId]);
 
   const submit = async () => {
     if (!unitId) { toast.error("Pilih satu unit terlebih dahulu"); return; }
     if (!petugasId) { toast.error("Pilih satu petugas terlebih dahulu"); return; }
+    if (!validFrom || (validUntil && validUntil < validFrom)) {toast.error("Periksa tanggal mulai dan akhir penugasan"); return;}
     if (saving) return;
     setSaving(true);
     try {
@@ -48,7 +56,7 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
         valid_from: validFrom,
         valid_until: validUntil || null,
         catatan,
-      });
+      }, {headers: {"Idempotency-Key": requestKey.current}});
       toast.success("Penugasan berhasil dibuat");
       setResult(data);
       onSuccess?.(data);
@@ -60,6 +68,7 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
   };
 
   const close = () => {
+    if (saving) return;
     onOpenChange(false);
     setPetugasId(""); setUnitId(accountId || ""); setCatatan(""); setValidUntil("");
     setResult(null);
@@ -103,6 +112,8 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
         ) : (
           <>
             <div className="space-y-4 py-2">
+              {loadingOptions && <p className="text-sm text-blue-600">Memuat unit dan petugas…</p>}
+              {optionsError && <p role="alert" className="text-sm text-red-600">{optionsError} Tutup dan buka kembali untuk mencoba lagi.</p>}
               <div>
                 <Label>Pilih Unit</Label>
                 {accountId ? (
@@ -112,7 +123,7 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
                 ) : (
                   <Select value={unitId} onValueChange={setUnitId}>
                     <SelectTrigger className="mt-1.5 rounded-xl" data-testid="penugasan-unit-select">
-                      <SelectValue placeholder="-- Pilih Unit (status Belum Ditugaskan) --" />
+                      <SelectValue placeholder="-- Pilih unit tanpa penugasan aktif --" />
                     </SelectTrigger>
                     <SelectContent>
                       {unitList.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">Tidak ada unit tersedia</div>}
@@ -155,7 +166,7 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={close} className="rounded-xl">Batal</Button>
-              <Button onClick={submit} disabled={saving} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="penugasan-submit-button">
+              <Button onClick={submit} disabled={saving || loadingOptions || !!optionsError} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="penugasan-submit-button">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Buat Penugasan"}
               </Button>
             </DialogFooter>

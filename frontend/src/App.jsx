@@ -1,34 +1,36 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { BrandingProvider } from "@/context/BrandingContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AppErrorBoundary from "@/components/AppErrorBoundary";
 
-import Login from "@/pages/Login";
-import Verify from "@/pages/Verify";
+const Login = lazy(() => import("@/pages/Login"));
+const Verify = lazy(() => import("@/pages/Verify"));
 
-import AdminLayout from "@/pages/admin/AdminLayout";
-import Dashboard from "@/pages/admin/Dashboard";
-import Klien from "@/pages/admin/Klien";
-import SuratKuasa from "@/pages/admin/SuratKuasa";
-import SuratKuasaDetail from "@/pages/admin/SuratKuasaDetail";
-import AkunUnit from "@/pages/admin/AkunUnit";
-import Penugasan from "@/pages/admin/Penugasan";
-import SuratTugas from "@/pages/admin/SuratTugas";
-import SuratTugasPrint from "@/pages/admin/SuratTugasPrint";
-import SuratPenugasanDoc from "@/pages/admin/SuratPenugasanDoc";
-import LaporanPetugas from "@/pages/admin/LaporanPetugas";
-import LaporanDetail from "@/pages/admin/LaporanDetail";
-import Petugas from "@/pages/admin/Petugas";
-import Pengaturan from "@/pages/admin/Pengaturan";
+const AdminLayout = lazy(() => import("@/pages/admin/AdminLayout"));
+const Dashboard = lazy(() => import("@/pages/admin/Dashboard"));
+const Klien = lazy(() => import("@/pages/admin/Klien"));
+const SuratKuasa = lazy(() => import("@/pages/admin/SuratKuasa"));
+const SuratKuasaDetail = lazy(() => import("@/pages/admin/SuratKuasaDetail"));
+const AkunUnit = lazy(() => import("@/pages/admin/AkunUnit"));
+const Penugasan = lazy(() => import("@/pages/admin/Penugasan"));
+const SuratTugas = lazy(() => import("@/pages/admin/SuratTugas"));
+const SuratTugasPrint = lazy(() => import("@/pages/admin/SuratTugasPrint"));
+const SuratPenugasanDoc = lazy(() => import("@/pages/admin/SuratPenugasanDoc"));
+const LaporanPetugas = lazy(() => import("@/pages/admin/LaporanPetugas"));
+const LaporanDetail = lazy(() => import("@/pages/admin/LaporanDetail"));
+const Petugas = lazy(() => import("@/pages/admin/Petugas"));
+const Pengaturan = lazy(() => import("@/pages/admin/Pengaturan"));
 
-import PetugasLayout from "@/pages/petugas/PetugasLayout";
-import Beranda from "@/pages/petugas/Beranda";
-import Tugas from "@/pages/petugas/Tugas";
-import DetailTugas from "@/pages/petugas/DetailTugas";
-import BuatLaporan from "@/pages/petugas/BuatLaporan";
-import Riwayat from "@/pages/petugas/Riwayat";
-import Profil from "@/pages/petugas/Profil";
+const PetugasLayout = lazy(() => import("@/pages/petugas/PetugasLayout"));
+const Beranda = lazy(() => import("@/pages/petugas/Beranda"));
+const Tugas = lazy(() => import("@/pages/petugas/Tugas"));
+const DetailTugas = lazy(() => import("@/pages/petugas/DetailTugas"));
+const BuatLaporan = lazy(() => import("@/pages/petugas/BuatLaporan"));
+const Riwayat = lazy(() => import("@/pages/petugas/Riwayat"));
+const Profil = lazy(() => import("@/pages/petugas/Profil"));
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -39,11 +41,11 @@ function RootRedirect() {
 
 export default function App() {
   return (
-    <AuthProvider>
+    <AppErrorBoundary><AuthProvider>
       <BrandingProvider>
       <BrowserRouter>
         <Toaster position="top-center" richColors />
-        <Routes>
+        <Suspense fallback={<div role="status" className="p-8 text-center text-blue-600">Memuat halaman…</div>}><Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
           <Route path="/verifikasi/:id" element={<Verify />} />
@@ -83,9 +85,9 @@ export default function App() {
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        </Routes></Suspense>
       </BrowserRouter>
       </BrandingProvider>
-    </AuthProvider>
+    </AuthProvider></AppErrorBoundary>
   );
 }

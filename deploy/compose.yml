@@ -1,0 +1,42 @@
+name: big-mobile
+services:
+  backend:
+    image: big-mobile-api:${RELEASE_TAG:?Set a release tag}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    env_file: app.env
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    volumes: [uploads:/data/uploads]
+    networks: [private]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "5"}
+  web:
+    image: big-mobile-web:${RELEASE_TAG:?Set a release tag}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    restart: unless-stopped
+    ports: [127.0.0.1:8080:8080]
+    depends_on:
+      backend: {condition: service_healthy}
+    networks: [private]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "5"}
+networks:
+  private:
+    driver: bridge
+volumes:
+  uploads:

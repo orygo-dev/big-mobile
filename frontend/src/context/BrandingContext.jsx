@@ -1,22 +1,24 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import api, { API } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-
-const BrandingContext = createContext({ appName: "FieldCollector", logo: "", reload: () => {} });
+const BrandingContext = createContext({ appName: "FieldCollector", logo: "", loginBackground: { preset: "aurora", image_url: "" }, reload: () => {} });
 
 export function BrandingProvider({ children }) {
-  const [brand, setBrand] = useState({ appName: "FieldCollector", logo: "" });
+  const { user } = useAuth();
+  const [brand, setBrand] = useState({ appName: "FieldCollector", logo: "", loginBackground: { preset: "aurora", image_url: "" } });
 
   const reload = useCallback(() => {
-    axios.get(`${BACKEND_URL}/api/branding`)
+    api.get(user ? "/company" : "/branding")
       .then(({ data }) => {
         const appName = data.app_name || "FieldCollector";
-        setBrand({ appName, logo: data.logo || "" });
+        const background = data.login_background || {};
+        const imageUrl = background.image_url ? `${API.replace(/\/api$/, "")}${background.image_url}` : "";
+        setBrand({ appName, logo: data.logo || "", loginBackground: { preset: background.preset || "aurora", image_url: imageUrl } });
         if (appName) document.title = appName;
       })
       .catch(() => {});
-  }, []);
+  }, [user]);
 
   useEffect(() => { reload(); }, [reload]);
 
