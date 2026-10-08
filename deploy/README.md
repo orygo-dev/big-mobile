@@ -6,7 +6,7 @@ Paket ini menjalankan React/Nginx dan FastAPI dalam Docker Compose, di belakang 
 
 1. Gunakan Linux yang didukung Docker Engine/Compose v2 dan MongoDB pilihan Anda. Siapkan domain dan DNS ke server; instal sertifikat HTTPS melalui aaPanel dan aktifkan pengalihan HTTP ke HTTPS. Pastikan waktu/NTP benar.
 2. Firewall publik hanya membuka port situs yang diperlukan. Port aplikasi 8080 hanya bind ke localhost; port backend/database tidak boleh dibuka publik. Batasi akses panel dan SSH.
-3. Clone repository ke `/www/wwwroot/big-mobile`, simpan tag/commit rilis. Docker tidak tersedia pada komputer pengembangan saat audit, sehingga build container dan pemeriksaan sertifikat wajib dijalankan pada staging server sebelum rilis.
+3. Clone repository ke `/www/wwwroot/big-mobile`, simpan tag/commit rilis. Build kedua container, konfigurasi Nginx dan scan Trivy High/Critical telah lulus di [CI Linux](https://github.com/orygo-dev/big-mobile/actions/runs/37751855804). Startup aplikasi, preflight dan pemeriksaan sertifikat tetap wajib dijalankan pada staging aaPanel sebelum rilis.
 4. Salin `deploy/app.env.example` ke `deploy/app.env`, izin `0600`. Isi domain sebenarnya, `APP_BASE_URL`, `CORS_ORIGINS`, URI MongoDB authenticated replica set/TLS, database khusus aplikasi, JWT secret acak, dan MONITOR_TOKEN yang berbeda. URI password harus URL encoded. Jangan commit `.env` atau menuliskan secret di chat. Matikan seed demo.
 5. Storage lokal menggunakan volume Docker `big-mobile_uploads`; pastikan kapasitas, izin UID 10001, dan backup off-server. Alternatif S3 memakai bucket private, HTTPS, encryption, versioning, lifecycle, IAM minimal, dan replikasi/backup. Endpoint file aplikasi memeriksa tenant/pemilik; bucket tidak boleh public.
 

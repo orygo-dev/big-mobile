@@ -33,8 +33,9 @@ Perbaikan aplikasi dan paket deployment aaPanel selesai disiapkan untuk staging.
 - Browser tambahan: close/reassign/cancel, blokir tugas masa depan, duplikat, status akhir dan kedaluwarsa otomatis pada MongoDB nyata.
 - Frontend: **12 tes** API/error/file/pagination/session/peta; build produksi Vite berhasil. Entry JS sekitar 432 kB sebelum gzip (~134 kB gzip), halaman dashboard terpisah.
 - Backup AES-256-GCM dan restore nyata ke replica set kosong: **17 koleksi, 56 dokumen, 1 foto** cocok; password hash dua pengguna cocok. Aplikasi hasil restore berhasil startup, login, membaca riwayat dan foto terautentikasi. Backup ~5,44 detik dan restore ~103,55 detik pada dataset QA kecil; bukan RTO produksi.
+- Restart MongoDB lokal secara graceful: jumlah dokumen seluruh koleksi tetap sama; readiness, login dan sesi melalui frontend proxy berhasil setelah restart.
 - Uji baseline dashboard: 100 request, concurrency 4, **0 error**, p50 85,1 ms, p95 483,4 ms pada CPU lokal. Belum mengukur kapasitas VPS atau load unggahan besar.
-- Python compile, YAML Compose/CI/config Mongo, shell syntax release/rollback, dan diff whitespace diperiksa. Docker tidak tersedia pada host lokal; workflow CI disiapkan untuk build container, Nginx syntax dan Trivy scan image, hasil remote harus diperiksa.
+- Python compile, YAML Compose/CI/config Mongo, shell syntax release/rollback, dan diff whitespace diperiksa. Docker tidak tersedia pada host lokal. [CI Linux untuk commit 87b03f7](https://github.com/orygo-dev/big-mobile/actions/runs/37751855804) lulus: 137 tes backend, 12 tes frontend, 10 tes transaksi/browser HTTPS, audit runtime Python/npm, build kedua container, Nginx syntax serta Trivy High/Critical kedua image (termasuk temuan tanpa patch). Runtime API memakai Python 3.12 Alpine dengan paket OS diperbarui; image Debian awal gagal scan dan diganti. Ini membuktikan build/scan di CI, belum deployment pada aaPanel target.
 
 ## Dependensi
 
