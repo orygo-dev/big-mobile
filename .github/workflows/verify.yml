@@ -30,34 +30,22 @@ jobs:
           REACT_APP_BACKEND_URL: ''
       - run: npx playwright install --with-deps chromium
         working-directory: frontend
-      - run: |
-          docker run -d --name mongo-qa -p 127.0.0.1:27017:27017 mongo:8.0 --replSet rs0 --bind_ip_all
-          for i in $(seq 1 30); do docker exec mongo-qa mongosh --quiet --eval 'db.adminCommand({ping:1})' && break; sleep 2; done
-          docker exec mongo-qa mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
-          for i in $(seq 1 30); do docker exec mongo-qa mongosh --quiet --eval 'if(!db.hello().isWritablePrimary) quit(1)' && break; sleep 2; done
-          python -m pytest backend/tests/test_real_transactions.py -q
+      - name: Native MySQL transaction tests
+        run: |
+          sudo systemctl start mysql
+          sudo mysql -e "SET GLOBAL log_bin_trust_function_creators=1; CREATE USER 'bigmobile'@'localhost' IDENTIFIED BY 'qa-local-ci-password'; CREATE DATABASE big_mobile_test; GRANT ALL ON big_mobile_test.* TO 'bigmobile'@'localhost';"
+          sudo mysql -e 'GRANT ALL ON `audit_mysql_%`.* TO "bigmobile"@"localhost";'
+          python -m pytest backend/tests/test_real_transactions.py backend/tests/test_mysql_ops.py -q
         env:
-          MONGO_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
+          MYSQL_TEST_URL: mysql://bigmobile:qa-local-ci-password@127.0.0.1:3306/big_mobile_test
           RUN_BROWSER_TESTS: 'true'
-      - run: |
-          cp deploy/app.env.example deploy/app.env
-          docker compose -f deploy/compose.yml config --quiet
-          docker compose -f deploy/compose.yml build
-          docker run --rm --add-host backend:127.0.0.1 --entrypoint nginx "big-mobile-web:$RELEASE_TAG" -t
-        env:
-          RELEASE_TAG: ci-${{ github.sha }}
-      - name: Scan backend runtime image
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: big-mobile-api:ci-${{ github.sha }}
-          exit-code: '1'
-          severity: CRITICAL,HIGH
-          ignore-unfixed: false
-      - name: Scan frontend runtime image
-        if: ${{ !cancelled() }}
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: big-mobile-web:ci-${{ github.sha }}
-          exit-code: '1'
-          severity: CRITICAL,HIGH
-          ignore-unfixed: false
+      - name: Native Apache configuration
+        run: |
+          bash -n deploy/release.sh deploy/rollback.sh
+          sudo apt-get update
+          sudo apt-get install -y apache2
+          sudo a2enmod proxy proxy_http headers rewrite
+          sudo mkdir -p /www/wwwroot/big-mobile/current/frontend/build
+          sudo cp deploy/aapanel-apache.conf /etc/apache2/conf-available/big-mobile.conf
+          sudo a2enconf big-mobile
+          sudo apache2ctl -t

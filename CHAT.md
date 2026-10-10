@@ -15,7 +15,7 @@ Admin membuka **Chat** dari sidebar/dashboard atau tombol **Chat petugas** pada 
 
 ## Integritas dan operasi
 
-Metadata pesan, nomor urut, ringkasan percakapan dan audit ditulis dalam transaksi MongoDB. Penutupan tugas dan pengiriman menyentuh assignment yang sama sehingga konflik diperiksa ulang. Unique index `(company_id, assignment_id, sender_id, client_message_id)` melindungi retry; isi yang berubah dengan ID sama ditolak 409. Nomor urut per assignment melindungi pagination ketika beberapa pengguna mengirim bersamaan.
+Metadata pesan, nomor urut, ringkasan percakapan dan audit ditulis dalam transaksi MySQL/InnoDB. Penutupan tugas dan pengiriman menyentuh assignment yang sama sehingga konflik diperiksa ulang. Unique index `(company_id, assignment_id, sender_id, client_message_id)` melindungi retry; isi yang berubah dengan ID sama ditolak 409. Nomor urut per assignment melindungi pagination ketika beberapa pengguna mengirim bersamaan.
 
 File ditulis di luar callback transaksi dengan upload journal. File tanpa metadata setelah kegagalan/retry bersamaan dibersihkan oleh worker setelah satu jam; file yang direferensikan `chat_messages.attachments.storage_path` dipertahankan. Lampiran disimpan pada storage privat yang dikonfigurasi, bukan direktori publik; URL tidak membawa token. Backup aplikasi mencakup koleksi chat serta file lokal. Untuk S3, backup versi object tetap mengikuti konfigurasi operator pada panduan deployment.
 
@@ -23,7 +23,7 @@ Startup membuat index chat otomatis; tidak menghapus atau mengubah data lama. Pr
 
 ## Verifikasi
 
-`python -m pytest backend/tests/test_chat.py -q` memeriksa validasi lokasi/lampiran, akses, input, status tertutup dan read cursor. Suite `backend/tests/test_real_transactions.py` dengan `MONGO_TEST_URI` dan `RUN_BROWSER_TESTS=true` memeriksa transaksi, retry paralel, rollback audit, pagination, isolasi file, riwayat tugas tertutup, send vs close, dan UI HTTPS admin/petugas.
+`python -m pytest backend/tests/test_chat.py -q` memeriksa validasi lokasi/lampiran, akses, input, status tertutup dan read cursor. Suite `backend/tests/test_real_transactions.py` dengan `MYSQL_TEST_URL` dan `RUN_BROWSER_TESTS=true` memeriksa transaksi, retry paralel, rollback audit, pagination, isolasi file, riwayat tugas tertutup, send vs close, dan UI HTTPS admin/petugas.
 
 Pengujian browser memakai GPS simulasi dan file uji. Kamera/GPS/izin serta performa pada Android/iOS nyata dan aaPanel target tetap perlu diverifikasi.
 

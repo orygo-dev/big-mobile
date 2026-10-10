@@ -1,4 +1,4 @@
-"""Encrypted MongoDB + local-file backup. Restore only to an isolated server."""
+"""Encrypted MySQL + local-file backup. Restore only to an isolated server."""
 import argparse, base64, hashlib, json, os, shutil, subprocess, tarfile, tempfile
 from pathlib import Path
 from datetime import datetime, timezone
@@ -42,23 +42,17 @@ def safe_extract(archive, destination):
         package.extractall(root,filter="data")
 
 
-def run_tool(tool, uri, arguments, directory):
-    # Credentials never appear in the process command line or printed logs.
-    config=Path(directory)/"connection.yml"
-    config.write_text("uri: "+json.dumps(uri)+"\n")
-    config.chmod(0o600)
-    try:
-        result=subprocess.run([tool,"--config="+str(config),*arguments],capture_output=True,timeout=int(os.environ.get("BACKUP_TOOL_TIMEOUT_SECONDS","3600")))
-        if result.returncode: raise RuntimeError(Path(tool).name+" failed; review server/tool permissions")
-    finally: config.unlink(missing_ok=True)
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from mysql_connection import run_tool, identity, options
 
 
-def backup(destination, uri, uploads, key, tool="mongodump"):
+def backup(destination, uri, uploads, key, tool="mysqldump"):
     output=Path(destination).resolve(); output.parent.mkdir(parents=True,exist_ok=True); output.parent.chmod(0o700)
     if output.exists(): raise ValueError("Backup destination already exists")
     with tempfile.TemporaryDirectory(dir=output.parent) as temporary:
         work=Path(temporary)
-        run_tool(tool,uri,["--oplog","--gzip","--archive="+str(work/"mongo.archive.gz")],work)
+        run_tool(tool,uri,["--single-transaction","--quick","--hex-blob","--no-tablespaces","--set-gtid-purged=OFF"],work,work/"database.sql")
         if uploads:
             source=Path(uploads).resolve()
             if not source.is_dir(): raise ValueError("Local upload directory is missing")
@@ -66,13 +60,13 @@ def backup(destination, uri, uploads, key, tool="mongodump"):
                 raise ValueError("Upload backup must not follow symbolic links")
             shutil.copytree(source,work/"uploads",symlinks=False)
         else: raise ValueError("This backup mode requires local storage; configure S3 versioning/replication separately")
-        with (work/"mongo.archive.gz").open("rb") as archive:
+        with (work/"database.sql").open("rb") as archive:
             checksum=hashlib.file_digest(archive,"sha256").hexdigest()
-        manifest={"created_at":datetime.now(timezone.utc).isoformat(),"storage":"local","mongo_sha256":checksum}
+        manifest={"created_at":datetime.now(timezone.utc).isoformat(),"storage":"local","mysql_sha256":checksum}
         (work/"manifest.json").write_text(json.dumps(manifest))
         bundle=work/"bundle.tar"
         with tarfile.open(bundle,"w") as package:
-            for name in ("mongo.archive.gz","uploads","manifest.json"): package.add(work/name,arcname=name)
+            for name in ("database.sql","uploads","manifest.json"): package.add(work/name,arcname=name)
         pending=work/"backup.pending"
         crypt(bundle,pending,key)
         pending.chmod(0o600)
@@ -80,14 +74,20 @@ def backup(destination, uri, uploads, key, tool="mongodump"):
     print("Encrypted backup completed:",output.name)
 
 
-def restore(source, uri, uploads, key, tool="mongorestore", allow=False):
+def restore(source, uri, uploads, key, tool="mysql", allow=False):
     if not allow: raise ValueError("Restore requires --isolated-target")
-    if uri==os.environ.get("MONGO_URL"): raise ValueError("Refusing application database URI as restore target")
-    from pymongo import MongoClient
-    probe=MongoClient(uri,serverSelectionTimeoutMS=5000)
-    if any(name not in {"admin","config","local"} for name in probe.list_database_names()):
-        raise ValueError("Restore target must have no application databases")
-    probe.close()
+    if os.environ.get("MYSQL_URL") and identity(uri)==identity(os.environ["MYSQL_URL"]):
+        raise ValueError("Refusing application database as restore target")
+    import pymysql
+    connection=options(uri)
+    if connection.get('ssl_ca'):
+        connection['ssl_verify_cert']=True;connection['ssl_verify_identity']=True
+    probe=pymysql.connect(**connection)
+    try:
+        with probe.cursor() as cursor:
+            cursor.execute('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=%s',(connection['database'],))
+            if cursor.fetchone()[0]:raise ValueError('Restore target database must be empty')
+    finally:probe.close()
     target=Path(uploads).resolve()
     if target.exists() and any(target.iterdir()): raise ValueError("Restore upload target must be empty")
     target.parent.mkdir(parents=True,exist_ok=True)
@@ -97,9 +97,9 @@ def restore(source, uri, uploads, key, tool="mongorestore", allow=False):
         safe_extract(work/"bundle.tar",work/"data")
         data=work/"data"
         manifest=json.loads((data/"manifest.json").read_text())
-        with (data/"mongo.archive.gz").open("rb") as stream:
-            if hashlib.file_digest(stream,"sha256").hexdigest()!=manifest["mongo_sha256"]: raise ValueError("Database archive checksum mismatch")
-        run_tool(tool,uri,["--gzip","--oplogReplay","--archive="+str(data/"mongo.archive.gz")],work)
+        with (data/"database.sql").open("rb") as stream:
+            if hashlib.file_digest(stream,"sha256").hexdigest()!=manifest["mysql_sha256"]: raise ValueError("Database archive checksum mismatch")
+        run_tool(tool,uri,["--binary-mode=1"],work,data/"database.sql",restore=True)
         shutil.copytree(data/"uploads",target,dirs_exist_ok=True)
     print("Backup restored to isolated target; verify counts, files, and application login before switching traffic.")
 
@@ -111,5 +111,5 @@ if __name__=="__main__":
     parser.add_argument("--isolated-target",action="store_true")
     args=parser.parse_args()
     key=base64.b64decode(os.environ["BACKUP_ENCRYPTION_KEY"],validate=True)
-    if args.mode=="backup": backup(args.archive,os.environ.get("BACKUP_MONGO_URL") or os.environ["MONGO_URL"],args.uploads,key,args.tool or "mongodump")
-    else: restore(args.archive,os.environ["RESTORE_MONGO_URL"],args.uploads,key,args.tool or "mongorestore",args.isolated_target)
+    if args.mode=="backup": backup(args.archive,os.environ.get("BACKUP_MYSQL_URL") or os.environ["MYSQL_URL"],args.uploads,key,args.tool or "mysqldump")
+    else: restore(args.archive,os.environ["RESTORE_MYSQL_URL"],args.uploads,key,args.tool or "mysql",args.isolated_target)

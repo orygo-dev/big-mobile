@@ -1,23 +1,21 @@
-"""Opt-in integration tests against an isolated DB on a real replica set."""
+"""Opt-in integration tests against an isolated DB on a real MySQL server."""
 import os, sys, uuid, secrets, subprocess, socket, time, io
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import bcrypt, jwt, requests, pytest
-from pymongo import MongoClient
+from mysql_test_support import IsolatedDatabase
 from PIL import Image
 
-pytestmark=pytest.mark.skipif(not os.environ.get('MONGO_TEST_URI'),reason='Set MONGO_TEST_URI to a test replica set; never uses a public demo')
+pytestmark=pytest.mark.skipif(not os.environ.get('MYSQL_TEST_URL'),reason='Set MYSQL_TEST_URL to an isolated MySQL test account; never uses a public demo')
 
 
 @pytest.fixture(scope='module')
 def live(tmp_path_factory):
     root=Path(__file__).resolve().parents[2]
     temporary=tmp_path_factory.mktemp('real-transactions')
-    mongo=MongoClient(os.environ['MONGO_TEST_URI'],serverSelectionTimeoutMS=5000)
-    assert mongo.admin.command('hello').get('setName'),'Integration target must support transactions'
-    name='audit_production_'+uuid.uuid4().hex
-    db=mongo[name]
+    name='audit_mysql_'+uuid.uuid4().hex
+    db=IsolatedDatabase(os.environ['MYSQL_TEST_URL'],name)
     company='company-'+uuid.uuid4().hex
     password=secrets.token_urlsafe(24)
     users={}
@@ -26,7 +24,7 @@ def live(tmp_path_factory):
         db.users.insert_one(person);users[label]=person
     db.companies.insert_one({'id':company,'nama':'Production QA','company_code':'QA','app_name':'BIG Mobile'})
     secret=secrets.token_urlsafe(48)
-    env={**os.environ,'APP_ENV':'production','MONGO_URL':os.environ['MONGO_TEST_URI'],'DB_NAME':name,'JWT_SECRET':secret,'DB_TRANSACTIONS':'true','FILE_STORAGE_BACKEND':'local','LOCAL_STORAGE_DIR':str(temporary/'uploads'),'APP_BASE_URL':'https://qa.example.com','CORS_ORIGINS':'https://qa.example.com','SEED_DEMO_DATA':'false','MONITOR_TOKEN':secrets.token_urlsafe(32)}
+    env={**os.environ,'APP_ENV':'production','MYSQL_URL':db.uri,'JWT_SECRET':secret,'DB_TRANSACTIONS':'true','FILE_STORAGE_BACKEND':'local','LOCAL_STORAGE_DIR':str(temporary/'uploads'),'APP_BASE_URL':'https://qa.example.com','CORS_ORIGINS':'https://qa.example.com','SEED_DEMO_DATA':'false','MONITOR_TOKEN':secrets.token_urlsafe(32)}
     with socket.socket() as sock:sock.bind(('127.0.0.1',0));web_port=sock.getsockname()[1]
     env['CORS_ORIGINS']+=f',https://localhost:{web_port}'
     env['ALLOW_INSECURE_LOCAL_TEST_DATABASE']='true'
@@ -54,8 +52,7 @@ def live(tmp_path_factory):
         try:process.wait(timeout=15)
         except subprocess.TimeoutExpired:process.kill();process.wait()
         output.close()
-        assert name.startswith('audit_production_')
-        mongo.drop_database(name);mongo.close()
+        db.close()
 
 
 def unit(live):
@@ -78,14 +75,14 @@ def test_assignment_failure_rolls_back_letter_unit_counter_and_audit(live):
     account,_=unit(live);db=live['db']
     audits=db.audit_logs.count_documents({})
     counters=list(db.counters.find({}))
-    db.command('collMod','assignment_letters',validator={'id':{'$exists':False}},validationLevel='strict')
+    db.block_writes('assignment_letters',True)
     try:
         live['call']('admin','POST','/penugasan',500,json={'account_id':account['id'],'petugas_id':live['users']['officer']['id']})
         assert db.assignments.count_documents({'account_id':account['id']})==0
         assert db.accounts.find_one({'id':account['id']})['status']=='BELUM_DITUGASKAN'
         assert db.audit_logs.count_documents({})==audits
         assert list(db.counters.find({}))==counters
-    finally:db.command('collMod','assignment_letters',validator={})
+    finally:db.block_writes('assignment_letters',False)
 
 
 def test_concurrent_assignment_only_one_commits(live):
@@ -131,7 +128,7 @@ def test_real_photo_report_review_isolation_and_renewal(live):
 def test_report_metadata_failure_rolls_back_and_orphan_file_is_cleaned(live):
     account,_=unit(live);letter=assign(live,account);db=live['db']
     image=io.BytesIO();Image.new('RGB',(32,32),'blue').save(image,format='PNG')
-    db.command('collMod','report_photos',validator={'id':{'$exists':False}},validationLevel='strict')
+    db.block_writes('report_photos',True)
     try:
         payload=report_payload(letter,account);payload['status']='UNIT_DITEMUKAN'
         live['call']('officer','POST','/laporan',500,data=payload,files={'photos':('proof.png',image.getvalue(),'image/png')})
@@ -140,11 +137,11 @@ def test_report_metadata_failure_rolls_back_and_orphan_file_is_cleaned(live):
         intents=list(db.upload_intents.find({}))
         assert intents
         db.upload_intents.update_many({}, {'$set':{'created_at':datetime.now(timezone.utc)-timedelta(hours=2)}})
-        code='import asyncio, server; asyncio.run(server.reconcile_uploads()); server.client.close()'
+        code='import asyncio, server; asyncio.run(server.reconcile_uploads())'
         subprocess.run([sys.executable,'-c',code],cwd=live['root']/'backend',env=live['env'],check=True,capture_output=True,timeout=30)
         assert db.upload_intents.count_documents({})==0
         assert not (Path(live['env']['LOCAL_STORAGE_DIR'])/intents[0]['storage_path']).exists()
-    finally:db.command('collMod','report_photos',validator={})
+    finally:db.block_writes('report_photos',False)
 
 
 def test_concurrent_reports_and_cancellation_remain_consistent(live):
@@ -202,11 +199,11 @@ def test_real_pdf_access_and_company_upload_audit_rollback(live):
     live['call']('foreign','GET',path,404)
     image=io.BytesIO();Image.new('RGBA',(32,32),(0,120,255,128)).save(image,format='PNG')
     db=live['db'];before=db.companies.find_one({'id':live['users']['admin']['company_id']}).get('logo')
-    db.command('collMod','audit_logs',validator={'id':{'$exists':False}},validationLevel='strict')
+    db.block_writes('audit_logs',True)
     try:
         live['call']('admin','POST','/company/logo',500,files={'file':('logo.png',image.getvalue(),'image/png')})
         assert db.companies.find_one({'id':live['users']['admin']['company_id']}).get('logo')==before
-    finally:db.command('collMod','audit_logs',validator={})
+    finally:db.block_writes('audit_logs',False)
     uploaded=live['call']('admin','POST','/company/logo',files={'file':('logo.png',image.getvalue(),'image/png')}).json()
     assert uploaded['logo'].startswith('data:image/png;base64,')
 
@@ -289,12 +286,12 @@ def test_chat_concurrent_retry_sequence_and_pagination(live):
 
 def test_chat_audit_failure_rolls_back_message_and_sequence(live):
     account,_=unit(live);letter=assign(live,account);task=letter['assignment_id'];db=live['db'];call=live['call']
-    db.command('collMod','audit_logs',validator={'id':{'$exists':False}},validationLevel='strict')
+    db.block_writes('audit_logs',True)
     try:
         call('admin','POST',f'/chat/{task}/messages',500,data={'client_message_id':str(uuid.uuid4()),'text':'Must roll back'})
         assert db.chat_messages.count_documents({'assignment_id':task})==0
         assert not db.assignments.find_one({'id':task}).get('chat_sequence')
-    finally:db.command('collMod','audit_logs',validator={})
+    finally:db.block_writes('audit_logs',False)
 
 
 def test_chat_invalid_file_and_owner_have_no_upload(live):

@@ -35,4 +35,4 @@ def test_restore_rejects_traversal_and_links(tmp_path,name,kind):
 
 def test_restore_requires_isolated_target_before_io(tmp_path):
     with pytest.raises(ValueError,match='isolated-target'):
-        ops.restore(tmp_path/'missing','mongodb://unused',tmp_path/'uploads',os.urandom(32))
+        ops.restore(tmp_path/'missing','mysql://unused',tmp_path/'uploads',os.urandom(32))

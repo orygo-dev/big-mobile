@@ -10,7 +10,6 @@ load_dotenv(ROOT_DIR / '.env')
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Form, File, UploadFile, Query, Header
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from typing import List, Literal, Optional
 from datetime import date, datetime, timezone, timedelta
@@ -25,7 +24,7 @@ import hmac
 import jwt
 import bcrypt
 import qrcode
-from pymongo.errors import DuplicateKeyError, ConnectionFailure
+from database import Database, DuplicateKeyError, ConnectionFailure
 from requests.exceptions import RequestException
 from PIL import Image, ImageOps, UnidentifiedImageError
 from storage import put_object, get_object, delete_object, init_storage, StorageUnavailable, APP_NAME
@@ -38,9 +37,8 @@ import idempotency
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-db = transactions.Database(client[os.environ['DB_NAME']])
+db = Database()
+client = db
 transactional = idempotency.decorator(lambda: db, lambda operation: transactions.run(client, operation))
 
 JWT_SECRET = os.environ['JWT_SECRET']
@@ -1854,10 +1852,7 @@ async def migrate_assignments_non_destructive():
 
 
 async def initialize_database():
-    if transactions.ENABLED:
-        hello = await db.command("hello")
-        if not hello.get("setName") and hello.get("msg") != "isdbgrid":
-            raise RuntimeError("DB_TRANSACTIONS requires a replica set or sharded MongoDB deployment")
+    await db.initialize()
     await db.users.create_index("email", unique=True)
     await db.revoked_tokens.create_index("id", unique=True)
     await db.revoked_tokens.create_index("expires_at", expireAfterSeconds=0)
@@ -1936,6 +1931,7 @@ async def maintain_database_connection():
                 logger.info("Database ready; application requests enabled")
             current = datetime.now(timezone.utc)
             if last_expiry_check is None or (current - last_expiry_check).total_seconds() >= 60:
+                await db.purge_expired()
                 today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
                 expired = await db.assignment_letters.find({"status": "aktif", "masa_berlaku": {"$type": "string", "$lt": today, "$ne": ""}}, {"_id": 0}).to_list(200)
                 for letter in expired:
@@ -1972,4 +1968,4 @@ async def shutdown():
             with suppress(asyncio.CancelledError):
                 await task
     app.state.database_ready = False
-    client.close()
+    await client.close()

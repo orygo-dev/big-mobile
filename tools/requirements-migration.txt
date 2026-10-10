@@ -1,0 +1,2 @@
+# Optional one-time legacy export only; never installed by the application.
+pymongo==4.18.2

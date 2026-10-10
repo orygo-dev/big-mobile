@@ -98,13 +98,18 @@ def test_cleanup_does_not_delete_referenced_upload(local_api, monkeypatch):
     deleter.assert_not_called();db.upload_intents.delete_one.assert_awaited_once()
 
 
-def test_transaction_context_injects_session_in_all_collection_operations():
-    collection=Mock();wrapped=server.transactions.Collection(collection)
-    session=object();token=server.transactions.session_context.set(session)
-    try:wrapped.find_one({'id':'test'});wrapped.update_one({'id':'test'},{'$set':{'value':1}})
-    finally:server.transactions.session_context.reset(token)
-    assert collection.find_one.call_args.kwargs['session'] is session
-    assert collection.update_one.call_args.kwargs['session'] is session
+def test_mysql_nested_operations_reuse_transaction_connection():
+    from database import Database, connection_context
+    database=Database('mysql://qa:qa@localhost/test')
+    connection=object();token=connection_context.set(connection)
+    async def check():
+        async with database.connection() as active:
+            assert active is connection
+        called=AsyncMock(return_value='result')
+        assert await database.run_transaction(called)=='result'
+        called.assert_awaited_once()
+    try:asyncio.run(check())
+    finally:connection_context.reset(token)
 
 
 def test_nonexistent_client_deactivation_is_not_reported_as_success(local_api):
@@ -129,10 +134,10 @@ def test_required_master_fields_reject_blank_input(local_api):
 
 
 @pytest.mark.parametrize('variable,value',[
-    ('MONGO_URL','mongodb://mongo.internal:27017/?replicaSet=rs0&tls=true'),
-    ('MONGO_URL','mongodb://application:password@mongo.internal:27017/?replicaSet=rs0'),
-    ('MONGO_URL','mongodb+srv://application:password@mongo.internal/?tls=false'),
-    ('MONGO_URL','mongodb://application:password@mongo.internal:27017/?tls=true&tlsAllowInvalidCertificates=true'),
+    ('MYSQL_URL','mysql://application@127.0.0.1/big_mobile'),
+    ('MYSQL_URL','mysql://application:password@mysql.internal/big_mobile'),
+    ('MYSQL_URL','mysql://root:password@127.0.0.1/big_mobile'),
+    ('MYSQL_URL','mysql://application:password@127.0.0.1/big_mobile?ssl_verify=false'),
     ('APP_BASE_URL','http://app.example.com'),
     ('DB_TRANSACTIONS','false'),
     ('SEED_DEMO_DATA','true'),
@@ -140,7 +145,7 @@ def test_required_master_fields_reject_blank_input(local_api):
 def test_production_rejects_unsafe_configuration(monkeypatch,variable,value):
     import secrets
     monkeypatch.setattr(server.security,'PRODUCTION',True)
-    for key,item in {'JWT_SECRET':secrets.token_urlsafe(48),'APP_BASE_URL':'https://app.example.com','CORS_ORIGINS':'https://app.example.com','MONGO_URL':'mongodb://application:password@mongo.internal:27017/?replicaSet=rs0&tls=true','DB_TRANSACTIONS':'true','SEED_DEMO_DATA':'false','FILE_STORAGE_BACKEND':'local','MONITOR_TOKEN':secrets.token_urlsafe(32)}.items():monkeypatch.setenv(key,item)
+    for key,item in {'JWT_SECRET':secrets.token_urlsafe(48),'APP_BASE_URL':'https://app.example.com','CORS_ORIGINS':'https://app.example.com','MYSQL_URL':'mysql://application:password@127.0.0.1/big_mobile','DB_TRANSACTIONS':'true','SEED_DEMO_DATA':'false','FILE_STORAGE_BACKEND':'local','MONITOR_TOKEN':secrets.token_urlsafe(32)}.items():monkeypatch.setenv(key,item)
     server.security.validate_configuration()
     monkeypatch.setenv(variable,value)
     with pytest.raises(RuntimeError):server.security.validate_configuration()

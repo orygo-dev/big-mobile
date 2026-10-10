@@ -11,7 +11,7 @@ from urllib.parse import quote
 from fastapi import Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from pymongo import ReturnDocument
+from database import ReturnDocument
 from pypdf.errors import PdfReadError
 from starlette.concurrency import run_in_threadpool
 
@@ -112,17 +112,8 @@ def register(router, runtime):
 
     @router.get("/chat/unread")
     async def unread_total(user: dict = Depends(runtime.get_current_user)):
-        query = {"company_id": user["company_id"], "sender_id": {"$ne": user["id"]}}
-        if user["role"] == "petugas": query["officer_id"] = user["id"]
-        elif user["role"] != "admin": raise HTTPException(403, "Akses chat tidak diizinkan")
-        pipeline = [
-            {"$match": query},
-            {"$lookup": {"from": "chat_reads", "let": {"assignment": "$assignment_id"}, "pipeline": [{"$match": {"company_id": user["company_id"], "user_id": user["id"], "$expr": {"$eq": ["$assignment_id", "$$assignment"]}}}], "as": "read"}},
-            {"$match": {"$expr": {"$gt": ["$sequence", {"$ifNull": [{"$arrayElemAt": ["$read.sequence", 0]}, 0]}]}}},
-            {"$count": "count"},
-        ]
-        result = await runtime.db.chat_messages.aggregate(pipeline).to_list(1)
-        return {"count": result[0]["count"] if result else 0}
+        if user["role"] not in {"admin", "petugas"}: raise HTTPException(403, "Akses chat tidak diizinkan")
+        return {"count": await runtime.db.unread_messages(user)}
 
     @router.get("/chat")
     async def inbox(page: int = Query(1, ge=1), limit: int = Query(30, ge=1, le=100), user: dict = Depends(runtime.get_current_user)):

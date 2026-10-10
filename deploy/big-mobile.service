@@ -1,0 +1,24 @@
+[Unit]
+Description=BIG Mobile API
+After=network.target mysql.service mysqld.service
+
+[Service]
+Type=simple
+User=bigmobile
+Group=bigmobile
+WorkingDirectory=/www/wwwroot/big-mobile/current/backend
+EnvironmentFile=/etc/big-mobile/app.env
+ExecStart=/www/wwwroot/big-mobile/current/.venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8000 --no-access-log --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+StateDirectory=big-mobile
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/big-mobile
+
+[Install]
+WantedBy=multi-user.target

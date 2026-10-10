@@ -1,4 +1,4 @@
-"""Local API regression tests. No MongoDB, storage, or remote demo required."""
+"""Local API regression tests. No database server, storage, or remote demo required."""
 import os
 import asyncio
 import sys
@@ -10,13 +10,12 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
-os.environ.setdefault("DB_NAME", "audit_tests")
+os.environ.setdefault("MYSQL_URL", "mysql://audit:local-unit-test@127.0.0.1/audit_mysql_unit")
 os.environ.setdefault("JWT_SECRET", "local-regression-test-secret-32-bytes")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:3000")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
-from pymongo.errors import DuplicateKeyError
+from database import DuplicateKeyError
 
 def login_background_png():
     import io
@@ -96,7 +95,7 @@ def local_api(monkeypatch):
         cursor.sort.return_value = cursor
         cursor.skip.return_value = cursor
         collections[name] = SimpleNamespace(find_one=AsyncMock(return_value=None), find_one_and_update=AsyncMock(return_value={"count": 1}), find=Mock(return_value=cursor), count_documents=AsyncMock(return_value=0), distinct=AsyncMock(return_value=[]), insert_one=AsyncMock(), update_one=AsyncMock(), update_many=AsyncMock(), create_index=AsyncMock(), delete_one=AsyncMock())
-    database = SimpleNamespace(**collections)
+    database = SimpleNamespace(**collections, initialize=AsyncMock(), purge_expired=AsyncMock())
     monkeypatch.setattr(server, "db", database)
     monkeypatch.setattr(server, "get_object", Mock(return_value=(b"photo", "image/jpeg")))
     server.app.dependency_overrides[server.admin_required] = lambda: ADMIN

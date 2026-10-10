@@ -1,10 +1,10 @@
 # BIG Mobile / FieldCollector
 
-Aplikasi administrasi penugasan dan laporan kunjungan petugas. Frontend menggunakan React; backend menggunakan FastAPI dan MongoDB.
+Aplikasi administrasi penugasan dan laporan kunjungan petugas. Frontend menggunakan React; backend menggunakan FastAPI dan MySQL/InnoDB.
 
 ## Konfigurasi lokal
 
-Salin `backend/.env.example` menjadi `backend/.env` dan `frontend/.env.example` menjadi `frontend/.env`. Isi JWT secret acak dan konfigurasi storage. MongoDB harus berjalan. URL frontend/backend harus sesuai dengan `APP_BASE_URL`, `CORS_ORIGINS`, dan `REACT_APP_BACKEND_URL`.
+Salin `backend/.env.example` menjadi `backend/.env` dan `frontend/.env.example` menjadi `frontend/.env`. Isi JWT secret acak dan konfigurasi storage. MySQL harus berjalan; isi MYSQL_URL dengan pengguna database khusus. URL frontend/backend harus sesuai dengan `APP_BASE_URL`, `CORS_ORIGINS`, dan `REACT_APP_BACKEND_URL`.
 
 Data demo tidak dibuat secara default. Untuk database development yang kosong, aktifkan `SEED_DEMO_DATA=true`; kembalikan ke `false` setelah bootstrap. Seed tidak lagi mereset password admin yang sudah ada. Jangan aktifkan data demo pada deployment produksi.
 
@@ -12,13 +12,11 @@ Backend: instal `backend/requirements.txt` di virtual environment, lalu jalankan
 
 Frontend: jalankan `npm ci --legacy-peer-deps`, lalu `npm start` dari direktori `frontend`. Lockfile dan overrides npm menyimpan versi dependensi yang diverifikasi. Tanpa `REACT_APP_BACKEND_URL`, frontend memakai `/api` pada origin yang sama; server hosting harus meneruskan `/api` ke backend.
 
-### MongoDB lokal Windows
+### MySQL native lokal
 
-Pada komputer Windows 10/CPU Sandy Bridge yang diaudit, gunakan runtime MongoDB 7.0.43 resmi pada direktori baru `.local/db-compatible7`. Buat direktori tersebut serta `.local/logs`, lalu jalankan `mongod --config backend/mongod.local.example.yml`. Inisialisasi replica set `rs0` dengan host `127.0.0.1:27017` dan gunakan URI replica set di `.env`. Transaksi memerlukan primary replica set, bukan standalone.
+Gunakan MySQL 8.4 LTS (minimal 8.0.21), bukan MariaDB. Buat database utf8mb4 dan pengguna aplikasi dengan hak pada database tersebut saja. MYSQL_URL memakai format `mysql://user:URL_ENCODED_PASSWORD@127.0.0.1:3306/big_mobile`. Tabel InnoDB dan indeks dibuat saat startup; transaksi tidak memerlukan replica set atau container.
 
-Zlib tidak mengonversi database Snappy dan tidak mengatasi seluruh kompresi internal history store MongoDB 8 pada CPU ini. Direktori database lama/cadangan tetap dipertahankan; data lama belum tersedia pada database lokal baru sampai dipulihkan dan diimpor dengan runtime/hardware yang kompatibel. Jangan mencoba membuka data MongoDB 8 memakai MongoDB 7.
-
-Backend memantau koneksi MongoDB dan mencoba kembali saat koneksi gagal. `GET /api/health` mengembalikan HTTP 200 saat database siap dan HTTP 503 saat belum siap. Permintaan aplikasi ditolak dengan pesan gangguan layanan selama database belum siap.
+Backend memantau koneksi dan mencoba kembali saat layanan database gagal. `/api/health` memberikan 200 ketika siap dan 503 ketika belum siap. Data MongoDB lama dapat dipindahkan melalui ekspor/import terpisah sesuai panduan deployment; sumber lama tetap dipertahankan.
 
 ### Penyimpanan foto dan dokumen
 
@@ -40,9 +38,9 @@ Lihat `AUDIT.md` untuk temuan, perbaikan, dan batas verifikasi.
 
 ## Produksi dengan aaPanel
 
-Ikuti [panduan deployment aaPanel](deploy/README.md) untuk Docker Compose, Nginx HTTPS, replica set MongoDB, bootstrap admin, preflight, backup terenkripsi, monitoring, dan rollback. Produksi memakai cookie HttpOnly/Secure, storage lokal atau S3 private, dan transaksi MongoDB wajib. Gunakan `backend/requirements-production.lock` dengan `pip install --require-hashes -r ...` untuk paket runtime yang dikunci.
+Ikuti [panduan deployment aaPanel](deploy/README.md) untuk Apache HTTPS, MySQL native, systemd, bootstrap admin, migrasi data lama, preflight, backup terenkripsi dan rollback. Aplikasi tidak menggunakan Docker. Produksi memakai cookie HttpOnly/Secure dan storage private. Instal runtime melalui `pip install --require-hashes -r backend/requirements-production.lock`.
 
-Jalankan suite keamanan/ops tambahan: `python -m pytest backend/tests/test_production_security.py backend/tests/test_backup_ops.py -q`. Untuk integrasi transaksi nyata, set `MONGO_TEST_URI` ke replica set pengujian lalu jalankan `backend/tests/test_real_transactions.py`; pengujian membuat database terisolasi sendiri dan membersihkannya. CI di `.github/workflows/verify.yml` juga membangun kedua container. Deployment/HTTPS, pemulihan data asli dan perangkat fisik harus diverifikasi pada lingkungan target sebelum go-live.
+Jalankan suite keamanan/ops dengan `python -m pytest backend/tests/test_production_security.py backend/tests/test_backup_ops.py -q`. Untuk integrasi nyata, set MYSQL_TEST_URL ke akun MySQL pengujian yang diizinkan membuat/menghapus database berawalan audit_mysql_; jalankan backend/tests/test_real_transactions.py. RUN_BROWSER_TESTS=true mengaktifkan alur HTTPS/browser. CI menjalankan MySQL native dan pemeriksaan konfigurasi Apache. Deployment aaPanel nyata, pemulihan data asli dan perangkat fisik tetap perlu diverifikasi di lingkungan target.
 
 ## Chat penugasan
 

@@ -1,77 +1,114 @@
-# Deployment BIG Mobile di aaPanel
+# Instalasi aaPanel: Apache + MySQL, tanpa Docker
 
-Paket ini menjalankan React/Nginx dan FastAPI dalam Docker Compose, di belakang HTTPS Nginx aaPanel. Database harus replica set yang diautentikasi dan menggunakan TLS. MongoDB yang dipasang aaPanel sebagai standalone belum memenuhi kebutuhan transaksi. Pilihan praktis: managed replica set, atau tiga anggota replica set pada server terpisah dengan backup teruji. Tiga proses pada satu VPS tidak memberi ketahanan terhadap kegagalan VPS.
+Arsitektur: Apache melayani build React dan meneruskan `/api/` ke FastAPI pada `127.0.0.1:8000`. FastAPI berjalan sebagai layanan systemd pengguna `bigmobile`. Database menggunakan MySQL/InnoDB; file private berada di `/var/lib/big-mobile/uploads`.
 
-## Persiapan server
+## 1. Persiapan
 
-1. Gunakan Linux yang didukung Docker Engine/Compose v2 dan MongoDB pilihan Anda. Siapkan domain dan DNS ke server; instal sertifikat HTTPS melalui aaPanel dan aktifkan pengalihan HTTP ke HTTPS. Pastikan waktu/NTP benar.
-2. Firewall publik hanya membuka port situs yang diperlukan. Port aplikasi 8080 hanya bind ke localhost; port backend/database tidak boleh dibuka publik. Batasi akses panel dan SSH.
-3. Clone repository ke `/www/wwwroot/big-mobile`, simpan tag/commit rilis. Build kedua container, konfigurasi Nginx dan scan Trivy High/Critical telah lulus di [CI Linux](https://github.com/orygo-dev/big-mobile/actions/runs/37751855804). Startup aplikasi, preflight dan pemeriksaan sertifikat tetap wajib dijalankan pada staging aaPanel sebelum rilis.
-4. Salin `deploy/app.env.example` ke `deploy/app.env`, izin `0600`. Isi domain sebenarnya, `APP_BASE_URL`, `CORS_ORIGINS`, URI MongoDB authenticated replica set/TLS, database khusus aplikasi, JWT secret acak, dan MONITOR_TOKEN yang berbeda. URI password harus URL encoded. Jangan commit `.env` atau menuliskan secret di chat. Matikan seed demo.
-5. Storage lokal menggunakan volume Docker `big-mobile_uploads`; pastikan kapasitas, izin UID 10001, dan backup off-server. Alternatif S3 memakai bucket private, HTTPS, encryption, versioning, lifecycle, IAM minimal, dan replikasi/backup. Endpoint file aplikasi memeriksa tenant/pemilik; bucket tidak boleh public.
+Gunakan Linux dengan systemd, Python 3.12 beserta modul venv, Node.js 22.20 atau versi 22 yang kompatibel, Git, dan MySQL **8.4 LTS**. MySQL minimal 8.0.21; paket ini tidak mendukung MariaDB. Instal Apache dan MySQL melalui aaPanel. Aktifkan modul Apache `proxy`, `proxy_http`, `headers`, `rewrite`, `ssl`. Nama/path layanan Apache aaPanel berbeda dari paket distro; gunakan panel untuk mengaktifkan modul dan memuat ulang konfigurasi.
 
-## Rilis pertama
+Buat DNS domain menuju server, tambahkan website di aaPanel, pasang sertifikat SSL dan aktifkan redirect HTTPS. Buka port publik 80/443. MySQL dan backend hanya mendengarkan loopback; port 3306/8000 tidak perlu dibuka ke internet.
 
-```bash
-cd /www/wwwroot/big-mobile
-export RELEASE_TAG=2026-10-08-1
-docker compose -f deploy/compose.yml config --quiet
-docker compose -f deploy/compose.yml build --pull
-docker compose -f deploy/compose.yml run --rm --no-deps backend python manage.py bootstrap-admin --name 'Administrator' --email 'admin@domain-anda.id' --company 'Nama Perusahaan'
-bash deploy/release.sh "$RELEASE_TAG"
-```
+## 2. Database dan konfigurasi
 
-Bootstrap hanya menerima database aplikasi kosong dan meminta password secara interaktif. Untuk database hasil migrasi, gunakan akun existing dan ganti semua password demo sebelum preflight. `manage.py preflight` memeriksa konfigurasi, transaksi nyata dengan write/abort, duplicate, referensi tenant, admin aktif, dan password bawaan. Pemeriksaan ini tidak menjamin integritas semua data legacy; tetap cocokkan jumlah, hubungan, dan dokumen terhadap sumber migrasi.
+Buat database `big_mobile` dan pengguna khusus `bigmobile` di menu Database aaPanel. Berikan hak hanya pada `big_mobile.*`, termasuk CREATE/ALTER/INDEX karena backend menginisialisasi tabel dan indeks. Pilih charset utf8mb4. Password kuat harus URL-encoded pada MYSQL_URL; jangan memakai akun root untuk aplikasi.
 
-Di aaPanel, buat situs domain Anda, aktifkan SSL, lalu masukkan isi `aapanel-location.conf` di dalam blok **server HTTPS**. Hindari location `/` ganda yang dibuat panel. Target proxy adalah `127.0.0.1:8080`; batas upload 45 MB dan timeout 130 detik. Nginx aaPanel mengganti header forwarded IP/scheme agar header dari klien tidak dipercaya. [Dokumentasi reverse proxy aaPanel](https://www.aapanel.com/docs/Function/proxy.html).
-
-Periksa `https://DOMAIN/api/health` menghasilkan HTTP 200 dan `status=ready`. Uji login/logout, perubahan password, file foto/PDF, refresh halaman langsung, geolokasi/kamera dan cetak pada HTTPS. Cookie produksi wajib Secure/HttpOnly; token tidak disimpan di localStorage dan URL file tidak berisi token. Frontend dan API harus berada pada origin yang sama.
-
-## Update dan rollback
-
-Jalankan CI dan staging terlebih dahulu. Buat backup terenkripsi sebelum update. Pakai tag rilis baru yang unik, jangan menimpa tag lama. `bash deploy/release.sh TAG` membangun image, menjalankan preflight, dan menunggu readiness. Simpan image rilis sebelumnya dan catat commit/image digest, tanggal backup, hasil pengujian, operator serta konfigurasi non-secret.
-
-Jika readiness/flow gagal, `bash deploy/rollback.sh TAG_SEBELUMNYA` memakai image yang sudah tersedia tanpa rebuild. Jangan otomatis mengembalikan database di atas data aktif. Perubahan database rilis ini menambahkan index/backfill; data legacy yang melanggar uniqueness menghentikan readiness dan harus diperbaiki di staging berdasarkan sumber data. Untuk rilis mendatang yang menghapus/mengubah field, siapkan strategi migrasi mundur sebelum deploy.
-
-## Backup dan drill pemulihan
-
-Instal MongoDB Database Tools resmi dan Python ops virtualenv di host:
+Siapkan direktori dan pengguna layanan sebagai root:
 
 ```bash
-python3 -m venv /opt/big-mobile-ops
-/opt/big-mobile-ops/bin/pip install -r deploy/requirements-ops.txt
+useradd --system --home /var/lib/big-mobile --shell /usr/sbin/nologin bigmobile
+install -d -m 755 /www/wwwroot/big-mobile /www/wwwroot/big-mobile/releases
+install -d -m 700 /etc/big-mobile
+install -d -o bigmobile -g bigmobile -m 700 /var/lib/big-mobile/uploads
+git clone https://github.com/orygo-dev/big-mobile.git /www/wwwroot/big-mobile/source
+cd /www/wwwroot/big-mobile/source
+install -m 600 deploy/app.env.example /etc/big-mobile/app.env
 ```
 
-Salin `ops.env.example` menjadi `ops.env` berizin 0600, isi kunci AES 256 bit base64 dan URI akun backup yang memiliki privilege backup. Simpan kunci di tempat terpisah dari backup. Temukan mount volume upload dengan `docker volume inspect big-mobile_uploads`, gunakan path yang dikembalikan pada `--uploads`. Backup mencakup full replica set melalui `mongodump --oplog`, bukan hanya satu database; dedikasikan cluster atau batasi kebijakan akses backup sesuai data yang disimpan.
+Jika pengguna/direktori sudah ada, gunakan kembali. Edit `/etc/big-mobile/app.env`: MYSQL_URL, domain pada APP_BASE_URL/CORS_ORIGINS, JWT_SECRET dan MONITOR_TOKEN acak berbeda, APP_ENV=production, SEED_DEMO_DATA=false. Jangan letakkan env pada DocumentRoot. MySQL remote memerlukan `?ssl_ca=/path/to/ca.pem` dan sertifikat dengan hostname yang sesuai. Gunakan server database lokal jika tersedia.
+
+## 3. Instalasi pertama
+
+Bangun rilis pertama; ganti `initial` dengan nama rilis unik:
 
 ```bash
-/opt/big-mobile-ops/bin/python deploy/run-ops.py --env deploy/app.env --env deploy/ops.env backup backup /BACKUP/big-mobile-DATE.bmb.enc --uploads /PATH/UPLOAD_VOLUME
+mkdir /www/wwwroot/big-mobile/releases/initial
+git archive HEAD | tar -x -C /www/wwwroot/big-mobile/releases/initial
+cd /www/wwwroot/big-mobile/releases/initial
+python3.12 -m venv .venv
+.venv/bin/pip install --require-hashes -r backend/requirements-production.lock
+cd frontend
+npm ci --legacy-peer-deps
+REACT_APP_BACKEND_URL='' npm run build
+cd ..
+.venv/bin/python backend/manage.py --env /etc/big-mobile/app.env bootstrap-admin --name 'Administrator' --email 'admin@domain-anda.id' --company 'Nama Perusahaan'
+.venv/bin/python backend/manage.py --env /etc/big-mobile/app.env preflight
+ln -s /www/wwwroot/big-mobile/releases/initial /www/wwwroot/big-mobile/current
+install -m 644 deploy/big-mobile.service /etc/systemd/system/big-mobile.service
+systemctl daemon-reload
+systemctl enable --now big-mobile
+curl --fail http://127.0.0.1:8000/api/health
 ```
 
-Hentikan sementara perubahan data/unggahan saat membuat backup aplikasi untuk mendapatkan pasangan database/file yang konsisten, terutama penghapusan/reconciliation. Simpan backup terenkripsi off-server. Contoh target awal: harian dengan retensi 30 hari, backup tambahan sebelum rilis; RPO/RTO final harus disepakati berdasarkan kebutuhan operasional dan hasil drill. Backup di disk VPS yang sama tidak melindungi kegagalan VPS.
+Password admin diminta secara interaktif, minimal 12 karakter; tidak ada akun/password demo pada produksi. Untuk memindahkan data existing, lakukan langkah migrasi di bawah **sebelum bootstrap-admin**.
 
-Restore hanya ke replica set **terpisah dan kosong**, dengan `RESTORE_MONGO_URL` berbeda. Direktori upload target harus kosong. Flag isolated-target menegaskan target yang diperiksa; script menolak database aplikasi existing, memverifikasi authentication tag/checksum dan menolak path traversal/symlink.
+## 4. Website Apache
+
+Set DocumentRoot website aaPanel menjadi `/www/wwwroot/big-mobile/current/frontend/build`. Izinkan Apache mengikuti symlink `current`; seluruh direktori induk harus bisa dilalui pengguna Apache. Jangan arahkan DocumentRoot ke source/backend/repository.
+
+Salin isi `deploy/aapanel-apache.conf` ke dalam VirtualHost HTTPS website melalui aaPanel. Pertahankan konfigurasi sertifikat, redirect dan ACME challenge yang dibuat panel. Konfigurasi memerlukan modul yang disebut di atas. Jalankan pemeriksaan konfigurasi Apache menggunakan executable Apache aaPanel, kemudian reload melalui panel.
+
+Buka `https://domain-anda.id/login`, login, refresh URL dashboard, dan uji penugasan/laporan/chat beserta lampiran. `/api/health` harus memberikan 200 dengan status ready; saat database tidak siap hasilnya 503. Pastikan cookie login Secure/HttpOnly. Uji unggahan dan izin lokasi melalui HTTPS pada perangkat target.
+
+## 5. Migrasi data MongoDB lama
+
+Hentikan penulisan aplikasi lama selama ekspor dan pemindahan file. Buat backup sumber terlebih dahulu. Ekspor ini memakai alat terpisah; aplikasi baru tidak menginstal driver MongoDB.
 
 ```bash
-/opt/big-mobile-ops/bin/python deploy/run-ops.py --env deploy/app.env --env deploy/ops.env backup restore /BACKUP/big-mobile-DATE.bmb.enc --uploads /RESTORE/UPLOADS --isolated-target
+python3.12 -m venv /opt/big-mobile-migration
+/opt/big-mobile-migration/bin/pip install -r tools/requirements-migration.txt
+# Isi SOURCE_MONGO_URL dan SOURCE_MONGO_DATABASE lewat environment privat.
+/opt/big-mobile-migration/bin/python tools/export_legacy_mongo.py /var/backups/big-mobile-legacy
+.venv/bin/python backend/migrate_legacy.py /var/backups/big-mobile-legacy --env /etc/big-mobile/app.env
+.venv/bin/python backend/manage.py --env /etc/big-mobile/app.env init-db
+.venv/bin/python backend/manage.py --env /etc/big-mobile/app.env preflight
 ```
 
-Bandingkan jumlah semua koleksi, hash file, relasi, login, tugas aktif dan riwayat; jalankan preflight serta smoke test staging. Catat waktu pemulihan. Ubah trafik hanya setelah verifikasi; pertahankan backup sumber. Mode script ini untuk local storage. S3 memerlukan drill pemulihan versi object/replikasi provider dan referensi MongoDB; belum diuji terhadap provider nyata.
+Target MySQL harus kosong. Import memeriksa checksum, jumlah record, collection yang dikenali, lalu menulis dalam satu transaksi. ID, hash password, riwayat dan path file dipertahankan. Salin storage lama ke direktori private baru dengan struktur path sama dan kepemilikan `bigmobile`; bandingkan hash file. Jangan hapus sumber sebelum login, relasi, seluruh hitungan dan file diverifikasi. Password demo/default harus diganti sebelum preflight produksi lulus. Dataset sangat besar perlu diuji pada staging untuk ukuran transaksi dan durasi maintenance.
 
-Data Windows lama yang gagal dibaca tidak boleh dihapus. Pulihkan salinan menggunakan runtime resmi pada hardware yang kompatibel, export BSON, import ke staging replica set, cocokkan jumlah/dokumen dan preflight sebelum cutover. Jangan menyalin file WiredTiger langsung ke database aktif produksi.
+## 6. Update dan rollback
 
-## Monitoring aaPanel
+```bash
+cd /www/wwwroot/big-mobile/source
+git pull --ff-only
+bash deploy/release.sh release-20261010
+# Jika perlu kembali ke rilis yang masih tersimpan:
+bash deploy/rollback.sh initial
+```
 
-Tambahkan cron setiap menit: `/opt/big-mobile-ops/bin/python /www/wwwroot/big-mobile/deploy/run-ops.py --env /www/wwwroot/big-mobile/deploy/app.env monitor`. Exit nonzero menandakan HTTP/health gagal; aktifkan notifikasi kegagalan cron di aaPanel. Notifikasi belum dihubungkan ke akun penerima selama audit.
+Script membangun rilis terpisah, memeriksa preflight dan mengalihkan symlink current. Jika readiness update gagal, rilis sebelumnya dikembalikan. Rilis baru harus dibuat dari commit yang telah direview. Rollback kode tidak memulihkan database; pertahankan kompatibilitas schema dan backup sebelum update.
 
-Endpoint `/api/metrics` memerlukan Bearer MONITOR_TOKEN dan memuat readiness, transaksi, jumlah request/error/durasi sejak proses hidup. Counter per proses; gunakan satu worker sesuai paket awal. Pantau disk/upload, memori, latency p95, rasio 5xx, status replica set/lag, kedaluwarsa TLS, umur backup dan keberhasilan restore. Log API JSON mencatat request ID/route template/status/durasi tanpa body/password/URI credential; log Docker dirotasi. Log proxy `/api` dimatikan untuk menghindari query sensitif.
+## 7. Backup dan restore
 
-## Syarat go-live yang masih memerlukan server/perangkat
+Instal client native `mysqldump`/`mysql` versi yang kompatibel. Buat venv ops dan instal `deploy/requirements-ops.txt`. Simpan env ops berizin 0600 di luar webroot, berdasarkan ops.env.example. BACKUP_ENCRYPTION_KEY berisi 32 byte acak base64; simpan kunci terpisah dari arsip. MYSQL_URL/BACKUP_MYSQL_URL memakai akun database yang sesuai. Native credentials ditulis hanya pada config sementara berizin 0600, bukan argumen proses.
 
-- Docker build, hasil scan image OS/base image, HTTPS/CSP/proxy, preflight dan CI berhasil pada staging aaPanel.
-- Migrasi data asli selesai jika diperlukan; akun demo/password default tidak tersedia di produksi.
-- Restore off-server, monitoring/notifikasi dan kapasitas diuji; bukti dan target RPO/RTO dicatat.
-- Kamera, GPS izin ditolak/diterima, foto, koneksi lambat/putus, cetak A4 dan login ulang diuji pada Android/iOS nyata.
-- S3 private/encryption/version restore diuji jika dipilih. Tes mock S3 tidak menggantikan pemeriksaan provider.
+Hentikan layanan sementara untuk memastikan snapshot SQL dan file konsisten, lakukan backup, lalu hidupkan kembali walaupun backup gagal. Atur jadwal melalui cron aaPanel sesuai jendela maintenance:
 
-Jangan nyatakan aplikasi sudah live atau kapasitas produksi terbukti sebelum pemeriksaan tersebut selesai.
+```bash
+systemctl stop big-mobile
+python deploy/run-ops.py --env /etc/big-mobile/ops.env backup backup /var/backups/big-mobile/backup.enc --uploads /var/lib/big-mobile/uploads
+systemctl start big-mobile
+```
+
+Backup menggunakan transaksi snapshot InnoDB, checksum dan enkripsi AES-256-GCM. Jangan mengubah schema selama backup. Salin arsip ke lokasi off-server. Restore membutuhkan database **terpisah, kosong**, direktori file kosong, dan RESTORE_MYSQL_URL khusus:
+
+```bash
+python deploy/run-ops.py --env /etc/big-mobile/ops.env backup restore /var/backups/big-mobile/backup.enc --uploads /var/lib/big-mobile-restore/uploads --isolated-target
+```
+
+Uji login, jumlah record, relasi dan hash file pada staging setelah restore. Kegagalan import SQL dapat meninggalkan target staging parsial; jangan alihkan trafik sebelum verifikasi. Backup lokal ini tidak mencadangkan object S3; untuk S3 gunakan versioning/replikasi provider dan lakukan drill pemulihan object bersama database.
+
+## 8. Pemeriksaan operasional
+
+Gunakan `systemctl status big-mobile` dan `journalctl -u big-mobile`. Pantau readiness, disk, MySQL, TLS, umur backup dan hasil restore. `/api/metrics` membutuhkan Bearer MONITOR_TOKEN. Hindari log Apache yang menyimpan query/body sensitif; gunakan `%m %U %>s` untuk request API jika menambahkan access log.
+
+Jalankan pengujian aaPanel nyata, restore drill dan perangkat fisik sebelum go-live. Paket ini tidak mengonfigurasi server produksi tanpa akses/domain/env server yang sebenarnya.

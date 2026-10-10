@@ -3,7 +3,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timezone, timedelta
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 import jwt
 
 PRODUCTION = os.environ.get("APP_ENV", "development") == "production"
@@ -33,17 +33,16 @@ def validate_configuration():
     origins = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "").split(",") if origin.strip()]
     if not origins or "*" in origins or any(urlparse(origin).scheme != "https" for origin in origins):
         raise RuntimeError("Production CORS origins must be explicit HTTPS origins")
-    mongo = urlparse(os.environ.get("MONGO_URL", ""))
-    options = parse_qs(mongo.query.lower())
-    isolated_test = os.environ.get("ALLOW_INSECURE_LOCAL_TEST_DATABASE") == "true" and mongo.hostname in {"localhost", "127.0.0.1"} and os.environ.get("DB_NAME", "").startswith("audit_production_")
-    if not isolated_test:
-        if mongo.scheme not in {"mongodb", "mongodb+srv"} or not mongo.username or not mongo.password:
-            raise RuntimeError("Production MongoDB authentication is required")
-        tls = options.get("tls", options.get("ssl"))
-        if (mongo.scheme == "mongodb+srv" and tls == ["false"]) or (mongo.scheme != "mongodb+srv" and tls != ["true"]):
-            raise RuntimeError("Production MongoDB must use TLS")
-        if any(options.get(name) == ["true"] for name in ("tlsallowinvalidcertificates", "tlsallowinvalidhostnames", "tlsinsecure")):
-            raise RuntimeError("Production MongoDB certificates must be verified")
+    mysql = urlparse(os.environ.get("MYSQL_URL", ""))
+    options = parse_qs(mysql.query)
+    if mysql.scheme != "mysql" or not mysql.hostname or not mysql.username or not mysql.password:
+        raise RuntimeError("Production MySQL authentication is required")
+    if unquote(mysql.username).lower() == "root":
+        raise RuntimeError("Production MySQL must use a dedicated application user")
+    if mysql.hostname not in {"localhost", "127.0.0.1", "::1"} and not options.get("ssl_ca"):
+        raise RuntimeError("Remote MySQL requires a verified TLS CA certificate")
+    if any(name not in {"ssl_ca"} for name in options):
+        raise RuntimeError("Unsupported MySQL connection option")
     monitor = os.environ.get("MONITOR_TOKEN", "")
     if len(monitor) < 32 or "replace-with" in monitor or monitor == secret:
         raise RuntimeError("Production requires a separate random MONITOR_TOKEN")
