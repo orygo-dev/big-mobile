@@ -33,8 +33,8 @@ jobs:
       - name: Native MySQL transaction tests
         run: |
           sudo systemctl start mysql
-          sudo mysql -e "SET GLOBAL log_bin_trust_function_creators=1; CREATE USER 'bigmobile'@'localhost' IDENTIFIED BY 'qa-local-ci-password'; CREATE DATABASE big_mobile_test; GRANT ALL ON big_mobile_test.* TO 'bigmobile'@'localhost';"
-          sudo mysql -e 'GRANT ALL ON `audit_mysql_%`.* TO "bigmobile"@"localhost";'
+          sudo env MYSQL_PWD=root mysql -u root -e "SET GLOBAL log_bin_trust_function_creators=1; CREATE USER 'bigmobile'@'localhost' IDENTIFIED BY 'qa-local-ci-password'; CREATE DATABASE big_mobile_test; GRANT ALL ON big_mobile_test.* TO 'bigmobile'@'localhost';"
+          sudo env MYSQL_PWD=root mysql -u root -e 'GRANT ALL ON `audit_mysql_%`.* TO "bigmobile"@"localhost";'
           python -m pytest backend/tests/test_real_transactions.py backend/tests/test_mysql_ops.py -q
         env:
           MYSQL_TEST_URL: mysql://bigmobile:qa-local-ci-password@127.0.0.1:3306/big_mobile_test

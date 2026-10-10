@@ -177,7 +177,9 @@ class Collection:
         rows=await self.database.execute('SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=%s AND index_name=%s',[self.table,name],fetch=True)
         if not rows:
             fields=', '.join(f'`g_{key}`' for key,_ in keys)
-            await self.database.execute(f"ALTER TABLE `{self.table}` ADD {'UNIQUE ' if unique else ''}INDEX `{name}` ({fields})")
+            try:await self.database.execute(f"ALTER TABLE `{self.table}` ADD {'UNIQUE ' if unique else ''}INDEX `{name}` ({fields})")
+            except pymysql.OperationalError as error:
+                if error.args[0]!=1061:raise
         return name
 
 class Database:
@@ -234,6 +236,7 @@ class Database:
                 locked=await self.execute('SELECT GET_LOCK(%s,30)',[lock_name],fetch=True)
                 if locked[0][0]!=1:raise RuntimeError('Schema initialization is busy')
                 try:
+                    tables={row[0] for row in await self.execute('SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()',fetch=True)}
                     for name in TABLES:
                         columns=['_pk VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY','payload JSON NOT NULL']
                         for field in TEXT_FIELDS:
@@ -241,7 +244,7 @@ class Database:
                             size=191 if field not in {'storage_path','email','identifier'} else 512
                             columns.append(f"`g_{field}` VARCHAR({size}) COLLATE utf8mb4_bin GENERATED ALWAYS AS (NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.{field}')),'null')) STORED")
                         for field in NUMBER_FIELDS:columns.append(f"`g_{field}` DECIMAL(30,6) GENERATED ALWAYS AS (CAST(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.{field}')) AS DECIMAL(30,6))) STORED")
-                        await self.execute(f"CREATE TABLE IF NOT EXISTS `bm_{name}` ({', '.join(columns)}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin")
+                        if 'bm_'+name not in tables:await self.execute(f"CREATE TABLE IF NOT EXISTS `bm_{name}` ({', '.join(columns)}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin")
                         existing={row[0] for row in await self.execute('SELECT column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=%s',['bm_'+name],fetch=True)}
                         for column in columns[2:]:
                             if column.split('`')[1] not in existing:
