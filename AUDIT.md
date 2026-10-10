@@ -34,9 +34,10 @@ Perbaikan aplikasi dan paket deployment aaPanel selesai disiapkan untuk staging.
 - Browser tambahan: close/reassign/cancel, blokir tugas masa depan, duplikat, status akhir dan kedaluwarsa otomatis pada MySQL nyata.
 - Frontend: **13 tes** API/error/file/pagination/session/peta; build produksi Vite berhasil. Entry JS sekitar 432 kB sebelum gzip (~134 kB gzip), halaman dashboard terpisah.
 - Migrasi menggunakan manifest checksum/count dan transaksi MySQL; ID serta hash password sumber dipertahankan. Data MongoDB lokal yang tersedia sudah diimpor; login/sesi/chat berhasil melalui frontend menggunakan MySQL.
-- Backup native menggunakan mysqldump dan restore mysql, arsip AES-256-GCM, pemeriksaan target kosong dan checksum. Pengujian tambahan berada pada test_mysql_ops.py; hasil CI menjadi bukti untuk rilis akhir.
-- Python runtime lock dikunci dengan SHA256. Pipeline CI kini memakai layanan MySQL native, menjalankan alur browser HTTPS, backup/migrasi, audit dependency dan pemeriksaan konfigurasi Apache. Bukti CI container sebelum migrasi bukan bukti untuk runtime baru.
-- Build frontend produksi berhasil. Vitest lokal Windows mengalami timeout saat startup worker; alur browser HTTPS pada MySQL tetap lulus. Suite frontend di CI harus lulus sebelum rilis.
+- Backup native menggunakan mysqldump dan restore mysql, arsip AES-256-GCM, pemeriksaan target kosong dan checksum. Pengujian tambahan berada pada test_mysql_ops.py; dua tes ops lulus lokal; CI juga memverifikasi preflight produksi, SQL parameter binding, lampiran JSON dan penolakan import ke target berisi data.
+- Python runtime lock dikunci dengan SHA256. Pipeline CI kini memakai layanan MySQL native, menjalankan alur browser HTTPS, backup/migrasi, audit dependency dan pemeriksaan konfigurasi Apache. [CI MySQL native f76a966](https://github.com/orygo-dev/big-mobile/actions/runs/38031400200) lulus: 150 tes backend, 17 tes transaksi/browser/ops, 13 tes frontend, audit runtime Python/npm, build dan syntax Apache. Bukti CI container sebelum migrasi bukan bukti untuk runtime baru.
+- Apache HTTPS native di WSL berhasil diuji dengan sertifikat QA yang diverifikasi: /login, refresh route SPA, proxy /api/health, CSP dan security headers. Ini belum merupakan deployment pada aaPanel target.
+- Build frontend produksi berhasil. Vitest lokal Windows mengalami timeout saat startup worker; alur browser HTTPS pada MySQL tetap lulus. Suite frontend CI Linux lulus seluruh 13 tes.
 
 ## Dependensi
 
