@@ -49,6 +49,7 @@ jobs:
           sudo cp deploy/aapanel-apache.conf /etc/apache2/conf-available/big-mobile.conf
           sudo a2enconf big-mobile
           sudo apache2ctl -t
+          APACHE_TEST_BINARY=/usr/sbin/apache2 python -m pytest backend/tests/test_apache_preview.py -q
 
   mariadb:
     runs-on: ubuntu-24.04
