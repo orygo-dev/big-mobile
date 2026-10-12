@@ -83,7 +83,7 @@ try {
   await op.goto(origin+'/app/chat/'+letter.assignment_id);await op.getByTestId('chat-read-only').waitFor();assert.equal(await op.getByTestId('chat-composer').count(),0);await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
   const settings={...await api('GET','company'),nama:'PT Reborn Browser QA',alamat:'Jl. Kantor Browser QA 12',email:'office@browser-qa.example.com',telepon:'021-987654'};
   await api('PUT','company',settings);
-  const logoUpload=await admin.request.post(origin+'/api/company/logo',{multipart:{file:{name:'company.png',mimeType:'image/png',buffer:fs.readFileSync(fixture.image)}}});assert.equal(logoUpload.status(),200);
+  const logoUpload=await admin.request.post(origin+'/api/company/logo',{headers:{Origin:origin},multipart:{file:{name:'company.png',mimeType:'image/png',buffer:fs.readFileSync(fixture.image)}}});assert.equal(logoUpload.status(),200);
   const configured=await logoUpload.json();
   async function verifyLetterhead(page) {
     const headers=page.getByTestId('company-letterhead');
