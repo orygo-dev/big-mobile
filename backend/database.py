@@ -52,7 +52,7 @@ def compile_query(query,alias=''):
         path=json_path(field)
         if value is None:return f"(JSON_EXTRACT({prefix}payload,'{path}') IS NULL OR JSON_TYPE(JSON_EXTRACT({prefix}payload,'{path}'))='NULL')",[]
         if field in TEXT_FIELDS or field in NUMBER_FIELDS:return f'COALESCE({expression(field,alias)}=%s,0)',[value]
-        return f"COALESCE(JSON_CONTAINS(JSON_EXTRACT({prefix}payload,'{path}'),CAST(%s AS JSON)),0)",[serialize(value)]
+        return f"COALESCE(JSON_CONTAINS(JSON_EXTRACT({prefix}payload,'{path}'),%s),0)",[serialize(value)]
     for field,value in (query or {}).items():
         if field in {'$and','$or'}:
             nested=[compile_query(item,alias) for item in value]
@@ -75,7 +75,7 @@ def compile_query(query,alias=''):
             elif op=='$type':
                 if operand!='string':raise ValueError('Unsupported type filter')
                 clauses.append(f"JSON_TYPE(JSON_EXTRACT({prefix}payload,'{json_path(field)}'))='STRING'")
-            elif op=='$regex':clauses.append(f'COALESCE(REGEXP_LIKE({target},%s,%s),0)');params.extend([operand,'i' if 'i' in value.get('$options','') else 'c'])
+            elif op=='$regex':clauses.append(f'COALESCE({target} REGEXP %s,0)');params.append(('(?i)' if 'i' in value.get('$options','') else '(?-i)')+operand)
             else:raise ValueError('Unsupported repository operation: '+op)
     return ' AND '.join(clauses) or '1',params
 
@@ -227,8 +227,12 @@ class Database:
     async def initialize(self):
         await self.command('ping')
         version=(await self.execute('SELECT VERSION()',fetch=True))[0][0]
-        if 'mariadb' in version.lower() or tuple(int(n) for n in version.split('-')[0].split('.')[:3])<(8,0,21):
-            raise RuntimeError('MySQL 8.0.21 or newer is required; use MySQL 8.4 LTS')
+        maria='mariadb' in version.lower()
+        numbers=re.findall(r'(\d+)\.(\d+)\.(\d+)',version.lower().split('mariadb')[0])
+        selected=(numbers[-1] if maria else numbers[0]) if numbers else ()
+        minimum=(10,11,0) if maria else (8,0,21)
+        if not selected or tuple(map(int,selected))<minimum:
+            raise RuntimeError('Requires MariaDB 10.11+ or MySQL 8.0.21+')
         async with self.connection() as connection:
             token=connection_context.set(connection)
             try:

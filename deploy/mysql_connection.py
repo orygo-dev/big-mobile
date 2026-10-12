@@ -24,13 +24,17 @@ def identity(uri):
 
 
 def run_tool(tool, uri, arguments, directory, sql_file, restore=False):
+    version=subprocess.run([tool,'--version'],capture_output=True,text=True,timeout=10)
+    if version.returncode:raise RuntimeError('Cannot identify SQL client version')
+    maria='mariadb' in (version.stdout+version.stderr).lower()
+    arguments=[arg for arg in arguments if not (maria and arg.startswith('--set-gtid-purged='))]
     connection = options(uri)
     config = Path(directory) / 'client.cnf'
     lines = ['[client]']
     for name in ('host', 'port', 'user', 'password'):
         lines.append(name + '=' + json.dumps(str(connection[name])))
     if connection.get('ssl_ca'):
-        lines.extend(['ssl-mode=VERIFY_IDENTITY', 'ssl-ca=' + json.dumps(connection['ssl_ca'])])
+        lines.extend(['ssl-verify-server-cert' if maria else 'ssl-mode=VERIFY_IDENTITY', 'ssl-ca=' + json.dumps(connection['ssl_ca'])])
     config.write_text('\n'.join(lines) + '\n')
     config.chmod(0o600)
     try:

@@ -4,7 +4,7 @@ Arsitektur: Apache melayani build React dan meneruskan `/api/` ke FastAPI pada `
 
 ## 1. Persiapan
 
-Gunakan Linux dengan systemd, Python 3.12 beserta modul venv, Node.js 22.20 atau versi 22 yang kompatibel, Git, dan MySQL **8.4 LTS**. MySQL minimal 8.0.21; paket ini tidak mendukung MariaDB. Instal Apache dan MySQL melalui aaPanel. Aktifkan modul Apache `proxy`, `proxy_http`, `headers`, `rewrite`, `ssl`. Nama/path layanan Apache aaPanel berbeda dari paket distro; gunakan panel untuk mengaktifkan modul dan memuat ulang konfigurasi.
+Gunakan Linux dengan systemd, Python 3.12 beserta modul venv, Node.js 22.20 atau versi 22 yang kompatibel, Git, dan MySQL **8.4 LTS** atau MariaDB **10.11+**. MySQL minimal 8.0.21; MariaDB 10.11+ juga didukung. Instal Apache dan MySQL melalui aaPanel. Aktifkan modul Apache `proxy`, `proxy_http`, `headers`, `rewrite`, `ssl`. Nama/path layanan Apache aaPanel berbeda dari paket distro; gunakan panel untuk mengaktifkan modul dan memuat ulang konfigurasi.
 
 Buat DNS domain menuju server, tambahkan website di aaPanel, pasang sertifikat SSL dan aktifkan redirect HTTPS. Buka port publik 80/443. MySQL dan backend hanya mendengarkan loopback; port 3306/8000 tidak perlu dibuka ke internet.
 

@@ -14,7 +14,7 @@ Frontend: jalankan `npm ci --legacy-peer-deps`, lalu `npm start` dari direktori 
 
 ### MySQL native lokal
 
-Gunakan MySQL 8.4 LTS (minimal 8.0.21), bukan MariaDB. Buat database utf8mb4 dan pengguna aplikasi dengan hak pada database tersebut saja. MYSQL_URL memakai format `mysql://user:URL_ENCODED_PASSWORD@127.0.0.1:3306/big_mobile`. Tabel InnoDB dan indeks dibuat saat startup; transaksi tidak memerlukan replica set atau container.
+Gunakan MySQL 8.4 LTS (minimal 8.0.21), atau MariaDB 10.11+. Buat database utf8mb4 dan pengguna aplikasi dengan hak pada database tersebut saja. MYSQL_URL memakai format `mysql://user:URL_ENCODED_PASSWORD@127.0.0.1:3306/big_mobile`. Tabel InnoDB dan indeks dibuat saat startup; transaksi tidak memerlukan replica set atau container.
 
 Backend memantau koneksi dan mencoba kembali saat layanan database gagal. `/api/health` memberikan 200 ketika siap dan 503 ketika belum siap. Data MongoDB lama dapat dipindahkan melalui ekspor/import terpisah sesuai panduan deployment; sumber lama tetap dipertahankan.
 
