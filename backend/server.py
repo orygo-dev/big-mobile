@@ -1162,6 +1162,7 @@ async def build_document_data(letter: dict, generated_by_name: str = "") -> dict
         "company": {
             "name": company.get("nama", ""), "city": company.get("city", ""),
             "address": company.get("alamat", ""), "phone": company.get("telepon", ""),
+            "email": company.get("email", ""),
             "director_name": company.get("director_name", ""),
             "director_position": company.get("director_position", "DIREKTUR"),
             "company_code": company.get("company_code", ""), "logo": company.get("logo", ""),
@@ -1199,7 +1200,13 @@ async def get_document_payload(letter: dict) -> dict:
         data = letter["document_snapshot"]
     else:
         data = await build_document_data(letter)
+    # Letterhead follows current settings; legal snapshots remain untouched.
+    company = await db.companies.find_one({"id": letter["company_id"]}, {"_id": 0})
+    letterhead = ({"name": company.get("nama", ""), "address": company.get("alamat", ""),
+                   "email": company.get("email", ""), "phone": company.get("telepon", ""),
+                   "logo": company.get("logo", "")} if company else data.get("company", {}))
     return {
+        "letterhead": letterhead,
         "document_status": letter.get("document_status", "DRAFT"),
         "is_finalized": letter.get("document_status") in {"ACTIVE", "COMPLETED", "CANCELLED", "EXPIRED"},
         "template": template, "data": data,

@@ -232,7 +232,8 @@ def test_https_browser_workflow_and_network_recovery(live):
         from pypdf import PdfReader
         reader=PdfReader(print_pdf)
         assert 1 <= len(reader.pages) <= 3
-        assert 'Browser Debitur' in ''.join(page.extract_text() for page in reader.pages)
+        printed=''.join(page.extract_text() for page in reader.pages)
+        for text in ('Browser Debitur','PT Reborn Browser QA','Jl. Kantor Browser QA 12','office@browser-qa.example.com','021-987654'):assert text in printed
     finally:fixture.unlink(missing_ok=True)
 
 def test_chat_attachment_location_idempotency_and_historical_access(live):

@@ -4,6 +4,7 @@ import api, { API, errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Loader2, Printer, Download, ArrowLeft, CheckCircle2, Ban, FileText } from "lucide-react";
 import { toast } from "sonner";
+import CompanyLetterhead from "@/components/CompanyLetterhead";
 
 const DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -28,25 +29,6 @@ function fdatetime(iso) {
 function subst(text, map) {
   if (!text) return "";
   return text.replace(/\{(\w+)\}/g, (_, k) => (map[k] != null ? map[k] : `{${k}}`));
-}
-
-const Logo = () => (
-  <div style={{ width: 54, height: 54, flexShrink: 0, borderRadius: 8, background: "#C0211F", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 20, fontFamily: "Arial" }}>
-    FC
-  </div>
-);
-
-function DocHeader({ title, nomor }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid #111", paddingBottom: 10, marginBottom: 14 }}>
-      <Logo />
-      <div style={{ flex: 1, textAlign: "center" }}>
-        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: 1 }}>{title}</div>
-        <div style={{ fontSize: 12, marginTop: 2 }}>NO: {nomor}</div>
-      </div>
-      <div style={{ width: 54 }} />
-    </div>
-  );
 }
 
 function Footer({ data }) {
@@ -88,6 +70,7 @@ export default function SuratPenugasanDoc() {
 
   const d = doc.data;
   const t = doc.template || {};
+  const letterhead = doc.letterhead || d.company;
   const finalized = doc.is_finalized;
   const firstAcc = d.accounts[0] || {};
   const map = {
@@ -144,7 +127,7 @@ export default function SuratPenugasanDoc() {
 
       {/* PAGE 1 */}
       <div className="doc-page" data-testid="doc-page-1">
-        <DocHeader title="SURAT PENUGASAN" nomor={d.letter.document_number || "(akan dibuat saat finalisasi)"} />
+        <CompanyLetterhead company={letterhead} title="SURAT PENUGASAN" number={d.letter.document_number || "(akan dibuat saat finalisasi)"} />
         <p style={{ margin: "8px 0 2px" }}>Saya yang bertanda tangan di bawah ini:</p>
         <table><tbody>
           <Row label="Nama" value={d.company.director_name} />
@@ -192,7 +175,7 @@ export default function SuratPenugasanDoc() {
 
       {/* PAGE 2 */}
       <div className="doc-page" data-testid="doc-page-2">
-        <DocHeader title="SURAT PENUGASAN" nomor={d.letter.document_number || "(akan dibuat saat finalisasi)"} />
+        <CompanyLetterhead company={letterhead} title="SURAT PENUGASAN" number={d.letter.document_number || "(akan dibuat saat finalisasi)"} />
         <div className="doc-h2">KEWAJIBAN DAN TANGGUNG JAWAB</div>
         <ol>{(t.kewajiban || []).map((x, i) => <li key={i}>{x}</li>)}</ol>
 
@@ -233,7 +216,7 @@ export default function SuratPenugasanDoc() {
       {d.accounts.map((a, idx) => (
         <div className="doc-page" data-testid={`doc-page-bastk-${idx}`} key={idx}>
           <div className="wm">{d.company.company_code || "FC"}</div>
-          <DocHeader title="BERITA ACARA SERAH TERIMA KENDARAAN" nomor={`Reg: ${d.letter.register_number || "(akan dibuat)"}${d.accounts.length > 1 ? `-${idx + 1}` : ""}`} />
+          <CompanyLetterhead company={letterhead} title="BERITA ACARA SERAH TERIMA KENDARAAN" number={`Reg: ${d.letter.register_number || "(akan dibuat)"}${d.accounts.length > 1 ? `-${idx + 1}` : ""}`} />
           <p style={{ margin: "4px 0" }}>Pada hari ini, {dayName(d.letter.issue_date)}, {fdate(d.letter.issue_date)}, yang bertanda tangan di bawah ini:</p>
           <table className="spec-table"><tbody>
             <Row label="Nama" value={a.debtor_name || "-"} />

@@ -1,21 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import api, { API, errMsg, getToken } from "@/lib/api";
+import api, { API, errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/constants";
-import { Loader2, Printer, ArrowLeft, Shield } from "lucide-react";
-import { toast } from "sonner";
+import { Loader2, Printer, ArrowLeft } from "lucide-react";
+import CompanyLetterhead from "@/components/CompanyLetterhead";
 
 export default function SuratTugasPrint() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [letter, setLetter] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [company, setCompany] = useState({});
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    api.get(`/surat-tugas/${id}`).then(({ data }) => setLetter(data)).catch((e) => toast.error(errMsg(e))).finally(() => setLoading(false));
+  const load = useCallback(() => {
+    setLoading(true); setError("");
+    Promise.all([api.get(`/surat-tugas/${id}`), api.get("/company")])
+      .then(([letterResponse, companyResponse]) => { setLetter(letterResponse.data); setCompany(companyResponse.data); })
+      .catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
   }, [id]);
+  useEffect(() => { load(); }, [load]);
 
+  if (error) return <div role="alert" className="p-8 text-center"><p>{error}</p><Button onClick={load}>Coba lagi</Button></div>;
   if (loading || !letter) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>;
 
   const qrSrc = `${API}/surat-tugas/${id}/qr`;
@@ -32,23 +39,14 @@ export default function SuratTugasPrint() {
       </div>
 
       <div className="print-page w-[210mm] min-h-[297mm] bg-white mx-auto shadow-2xl p-[18mm] text-slate-900" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-        {/* Kop surat */}
-        <div className="flex items-center gap-4 border-b-4 border-slate-900 pb-4">
-          <div className="w-16 h-16 rounded-xl bg-blue-700 flex items-center justify-center flex-shrink-0">
-            <Shield className="w-9 h-9 text-white" />
-          </div>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold tracking-tight">PT GARDA KOLEKSI NUSANTARA</h1>
-            <p className="text-sm text-slate-600">Jl. Jenderal Sudirman No. 45, Jakarta Pusat · Telp. 021-5550123</p>
-          </div>
-        </div>
+        <CompanyLetterhead company={company} />
 
         <div className="text-center my-6">
           <h2 className="text-xl font-bold underline tracking-wide">SURAT TUGAS</h2>
           <p className="text-sm mt-1">Nomor: {letter.nomor}</p>
         </div>
 
-        <p className="text-sm leading-relaxed">Yang bertanda tangan di bawah ini, pimpinan PT Garda Koleksi Nusantara, dengan ini menugaskan:</p>
+        <p className="text-sm leading-relaxed">Yang bertanda tangan di bawah ini, pimpinan {company.nama}, dengan ini menugaskan:</p>
 
         <table className="text-sm my-4 w-full">
           <tbody>
@@ -95,10 +93,10 @@ export default function SuratTugasPrint() {
             <img src={qrSrc} alt="QR Verifikasi" className="w-28 h-28 border border-slate-200" crossOrigin="anonymous" />
           </div>
           <div className="text-center text-sm">
-            <p>Jakarta, {formatDate(letter.tanggal)}</p>
+            <p>{company.city ? `${company.city}, ` : ""}{formatDate(letter.tanggal)}</p>
             <p className="mt-1">Pimpinan,</p>
             <div className="h-20" />
-            <p className="font-bold underline">PT Garda Koleksi Nusantara</p>
+            <p className="font-bold underline">{company.director_name || company.nama}</p>
           </div>
         </div>
       </div>

@@ -127,6 +127,20 @@ def test_closed_document_retains_original_snapshot(local_api, monkeypatch):
     assert api.post("/api/surat-tugas/letter/finalize").status_code == 400
 
 
+def test_document_letterhead_follows_settings_without_rewriting_snapshot(local_api):
+    api, db = local_api
+    snapshot = {"company": {"name": "Original legal company", "logo": "original-logo"}, "official": "immutable"}
+    db.assignment_letters.find_one.return_value = {"id":"letter", "company_id":"company-a", "document_snapshot":snapshot, "document_status":"ACTIVE"}
+    settings = {"id":"company-a", "nama":"PT Current", "alamat":"Current address", "email":"office@example.com", "telepon":"021123", "logo":"current-logo"}
+    db.companies.find_one.return_value = settings
+    response = api.get('/api/surat-tugas/letter/document')
+    assert response.status_code == 200
+    assert response.json()['letterhead'] == {"name":"PT Current", "address":"Current address", "email":"office@example.com", "phone":"021123", "logo":"current-logo"}
+    assert response.json()['data'] == snapshot
+    db.companies.find_one.assert_awaited_with({"id":"company-a"}, {"_id":0})
+    db.assignment_letters.update_one.assert_not_called()
+
+
 def test_authority_invalid_dates_rejected(local_api):
     api, db = local_api
     assert api.post("/api/surat-kuasa", json={"nomor": "SK", "client_id": "client", "tanggal_berlaku": "2026-10-08", "tanggal_berakhir": "2026-10-01"}).status_code == 400

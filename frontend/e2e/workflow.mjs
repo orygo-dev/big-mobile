@@ -1,4 +1,4 @@
-// Private test fixture only; pytest creates and removes its isolated Mongo database.
+// Private test fixture only; pytest creates and removes its isolated SQL database.
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
@@ -81,7 +81,25 @@ try {
   await op.goto(origin+'/app/riwayat');await op.getByText('Review browser QA').waitFor();await op.locator('img[src*="/api/files/"]').first().evaluate(image=>image.decode());
   await api('PATCH','surat-tugas/'+letter.id+'/status',{status:'selesai'});
   await op.goto(origin+'/app/chat/'+letter.assignment_id);await op.getByTestId('chat-read-only').waitFor();assert.equal(await op.getByTestId('chat-composer').count(),0);await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
+  const settings={...await api('GET','company'),nama:'PT Reborn Browser QA',alamat:'Jl. Kantor Browser QA 12',email:'office@browser-qa.example.com',telepon:'021-987654'};
+  await api('PUT','company',settings);
+  const logoUpload=await admin.request.post(origin+'/api/company/logo',{multipart:{file:{name:'company.png',mimeType:'image/png',buffer:fs.readFileSync(fixture.image)}}});assert.equal(logoUpload.status(),200);
+  const configured=await logoUpload.json();
+  async function verifyLetterhead(page) {
+    const headers=page.getByTestId('company-letterhead');
+    await headers.first().waitFor();
+    for(const header of await headers.all()) {
+      const text=await header.innerText();
+      for(const value of [settings.nama,settings.alamat,settings.email,settings.telepon])assert(text.includes(value));
+      assert.equal(await header.locator('img').getAttribute('src'),configured.logo);
+      await header.locator('img').evaluate(image=>image.decode());
+    }
+  }
+  await ap.goto(origin+'/admin/surat-tugas/'+letter.id+'/dokumen');
+  await ap.getByTestId('doc-page-1').waitFor();await verifyLetterhead(ap);
+  assert.equal(await ap.getByTestId('company-letterhead').count(),3);
   await ap.goto(origin+'/admin/surat-tugas/'+letter.id+'/print');await ap.getByText(unit.nama_debitur,{exact:false}).first().waitFor();
+  await verifyLetterhead(ap);
   await ap.pdf({path:fixture.print_pdf,format:'A4',printBackground:true});
   await ap.route('**/api/dashboard/stats',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'QA dashboard failure'})}));await ap.goto(origin+'/admin');await ap.getByRole('alert').filter({hasText:'QA dashboard failure'}).waitFor();assert.equal(await ap.getByTestId('dashboard-stats').count(),0);await ap.unroute('**/api/dashboard/stats');await ap.getByRole('button',{name:'Coba lagi',exact:true}).click();await ap.getByTestId('dashboard-stats').waitFor();
   await op.goto(origin+'/app/profil');await op.getByTestId('petugas-logout-button').click();await op.waitForURL('**/login');assert.equal((await officer.request.get(origin+'/api/auth/me')).status(),401);
