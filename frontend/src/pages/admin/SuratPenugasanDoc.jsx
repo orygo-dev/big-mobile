@@ -186,20 +186,20 @@ export default function SuratPenugasanDoc() {
         <p style={{ margin: "3px 0" }}>{subst(t.masa_berlaku, map)}</p>
 
         <p style={{ margin: "18px 0 0" }}>{d.company.city || "-"}, {fdate(d.letter.issue_date)}</p>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10 }}>
-          <div style={{ textAlign: "center", width: "45%" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: "10%", textAlign: "center", marginTop: 10, breakInside: "avoid" }}>
+          <div>
             <div>PENERIMA TUGAS</div>
-            <div style={{ height: 56 }} />
-            <div style={{ fontWeight: 700 }}>({d.officer.name})</div>
           </div>
-          <div style={{ textAlign: "center", width: "45%" }}>
+          <div>
             <div>PEMBERI TUGAS</div>
             <div>{d.company.director_position} {d.company.name}</div>
-            <div style={{ height: "22mm", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {(doc.director_signature || d.company.director_signature) && <img src={doc.director_signature ?? d.company.director_signature} alt="Tanda tangan direktur" data-testid="director-signature" style={{ width: "50mm", height: "22mm", objectFit: "contain" }} />}
-            </div>
-            <div style={{ fontWeight: 700 }}>({d.company.director_name})</div>
           </div>
+          <div style={{ height: "22mm" }} />
+          <div style={{ height: "22mm", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {(doc.director_signature || d.company.director_signature) && <img src={doc.director_signature ?? d.company.director_signature} alt="Tanda tangan direktur" data-testid="director-signature" style={{ width: "50mm", height: "22mm", objectFit: "contain" }} />}
+          </div>
+          <div style={{ fontWeight: 700 }}>({d.officer.name})</div>
+          <div style={{ fontWeight: 700 }}>({d.company.director_name})</div>
         </div>
 
         <div className="doc-h2" style={{ marginTop: 24 }}>VERIFIKASI SURAT PENUGASAN</div>
