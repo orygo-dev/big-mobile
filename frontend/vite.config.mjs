@@ -8,7 +8,8 @@ export default defineConfig(({mode}) => {
     plugins: [react()],
     resolve: {alias: {"@": path.resolve(import.meta.dirname, "src")}},
     define: {"process.env.REACT_APP_BACKEND_URL": JSON.stringify(mode === "test" ? "" : env.REACT_APP_BACKEND_URL || "")},
-    build: {outDir: "build", sourcemap: false},
+    // aaPanel can place a protected .user.ini in the site's output directory.
+    build: {outDir: "build", emptyOutDir: false, sourcemap: false},
     server: {strictPort: true, proxy: {"/api": "http://127.0.0.1:8000"}},
     test: {globals: true, environment: "jsdom", setupFiles: ["./src/test-setup.js"], maxWorkers: 1, pool: "threads", isolate: false},
   };
