@@ -195,7 +195,9 @@ export default function SuratPenugasanDoc() {
           <div style={{ textAlign: "center", width: "45%" }}>
             <div>PEMBERI TUGAS</div>
             <div>{d.company.director_position} {d.company.name}</div>
-            <div style={{ height: 36 }} />
+            <div style={{ height: "22mm", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {(doc.director_signature || d.company.director_signature) && <img src={doc.director_signature ?? d.company.director_signature} alt="Tanda tangan direktur" data-testid="director-signature" style={{ width: "50mm", height: "22mm", objectFit: "contain" }} />}
+            </div>
             <div style={{ fontWeight: 700 }}>({d.company.director_name})</div>
           </div>
         </div>

@@ -1166,6 +1166,7 @@ async def build_document_data(letter: dict, generated_by_name: str = "") -> dict
             "director_name": company.get("director_name", ""),
             "director_position": company.get("director_position", "DIREKTUR"),
             "company_code": company.get("company_code", ""), "logo": company.get("logo", ""),
+            "director_signature": company.get("director_signature", ""),
         },
         "finance": {"name": client_doc.get("nama_perusahaan", "")},
         "officer": {
@@ -1202,11 +1203,15 @@ async def get_document_payload(letter: dict) -> dict:
         data = await build_document_data(letter)
     # Letterhead follows current settings; legal snapshots remain untouched.
     company = await db.companies.find_one({"id": letter["company_id"]}, {"_id": 0})
+    signature = data.get("company", {}).get("director_signature")
+    if letter.get("document_status", "DRAFT") == "DRAFT" or signature is None:
+        signature = (company or {}).get("director_signature", "")
     letterhead = ({"name": company.get("nama", ""), "address": company.get("alamat", ""),
                    "email": company.get("email", ""), "phone": company.get("telepon", ""),
                    "logo": company.get("logo", "")} if company else data.get("company", {}))
     return {
         "letterhead": letterhead,
+        "director_signature": signature,
         "document_status": letter.get("document_status", "DRAFT"),
         "is_finalized": letter.get("document_status") in {"ACTIVE", "COMPLETED", "CANCELLED", "EXPIRED"},
         "template": template, "data": data,
@@ -1725,6 +1730,22 @@ async def upload_company_logo(file: UploadFile = File(...), user: dict = Depends
     await run_in_threadpool(verified_image_format, content, {"PNG"}, 4_000_000)
     data_url = "data:image/png;base64," + base64.b64encode(content).decode("ascii")
     return await store_company_artifact(user, {"logo": data_url}, "Mengunggah logo perusahaan")
+
+@api_router.post("/company/director-signature")
+async def upload_director_signature(file: UploadFile = File(...), user: dict = Depends(admin_required)):
+    formats = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
+    if file.content_type not in formats:
+        raise HTTPException(status_code=400, detail="Gunakan tanda tangan PNG, JPG, atau WEBP")
+    content = await file.read(2 * 1024 * 1024 + 1)
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Ukuran tanda tangan maksimal 2MB")
+    await run_in_threadpool(verified_image_format, content, {formats[file.content_type]}, 4_000_000)
+    data_url = f"data:{file.content_type};base64," + base64.b64encode(content).decode("ascii")
+    return await store_company_artifact(user, {"director_signature": data_url}, "Mengunggah tanda tangan direktur")
+
+@api_router.delete("/company/director-signature")
+async def delete_director_signature(user: dict = Depends(admin_required)):
+    return await store_company_artifact(user, {"director_signature": ""}, "Menghapus tanda tangan direktur")
 
 @api_router.post("/surat-kuasa/{sk_id}/file")
 async def upload_sk_file(sk_id: str, file: UploadFile = File(...), user: dict = Depends(admin_required)):

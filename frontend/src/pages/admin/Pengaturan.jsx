@@ -23,6 +23,27 @@ export default function Pengaturan() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const logoRef = useRef(null);
+  const signatureRef = useRef(null);
+  const [signatureBusy, setSignatureBusy] = useState(false);
+
+  const updateSignature = async (event) => {
+    const file = event?.target.files?.[0];
+    if (event) event.target.value = "";
+    if (event && !file) return;
+    if (file && (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024)) {
+      toast.error("Gunakan PNG, JPG, atau WEBP maksimal 2MB"); return;
+    }
+    setSignatureBusy(true);
+    try {
+      let response;
+      if (file) {
+        const body = new FormData(); body.append("file", file);
+        response = await api.post("/company/director-signature", body);
+      } else response = await api.delete("/company/director-signature");
+      setCompany(response.data); toast.success(file ? "Tanda tangan diperbarui" : "Tanda tangan dihapus");
+    } catch (err) { toast.error(errMsg(err)); }
+    finally { setSignatureBusy(false); }
+  };
 
   const [error, setError] = useState("");
   const load = useCallback(() => {
@@ -91,6 +112,20 @@ export default function Pengaturan() {
             <Button onClick={() => logoRef.current?.click()} disabled={uploading} variant="outline" className="rounded-xl" data-testid="logo-upload-button">
               {uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />} Unggah Logo PNG
             </Button>
+          </div>
+        </div>
+        <div className="mt-5 pt-5 border-t border-slate-200 flex items-center gap-5 flex-wrap">
+          <div className="w-52 h-24 bg-white border border-slate-200 rounded-xl flex items-center justify-center p-2">
+            {company.director_signature ? <img src={company.director_signature} alt="Tanda tangan direktur" className="w-full h-full object-contain" /> : <span className="text-xs text-slate-500">Belum ada tanda tangan</span>}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-700">Tanda Tangan Direktur</p>
+            <p className="text-xs text-slate-500 mt-1 mb-3">PNG transparan disarankan. PNG, JPG, atau WEBP maksimal 2MB. Potong ruang kosong agar tanda tangan terlihat jelas pada surat.</p>
+            <input ref={signatureRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={updateSignature} className="hidden" data-testid="signature-file-input" />
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={signatureBusy} onClick={() => signatureRef.current?.click()} data-testid="signature-upload-button"><Upload className="w-4 h-4 mr-1" />{signatureBusy ? "Memproses…" : "Unggah Tanda Tangan"}</Button>
+              {company.director_signature && <Button variant="outline" disabled={signatureBusy} onClick={() => updateSignature()}>Hapus</Button>}
+            </div>
           </div>
         </div>
       </div>

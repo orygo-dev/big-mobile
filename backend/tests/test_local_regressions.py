@@ -83,6 +83,37 @@ def test_login_background_settings_reject_officers(local_api):
 ADMIN = {"id": "admin", "company_id": "company-a", "role": "admin", "status": "aktif", "name": "Admin"}
 OFFICER = {**ADMIN, "id": "officer", "role": "petugas"}
 
+def test_director_signature_upload_and_removal(local_api):
+    api, database = local_api
+    database.companies.find_one.return_value = {"id": "company-a"}
+    response = api.post("/api/company/director-signature", files={"file": ("signature.png", login_background_png(), "image/png")})
+    assert response.status_code == 200
+    query, update = database.companies.update_one.call_args.args
+    assert query == {"id": "company-a"}
+    assert update["$set"]["director_signature"].startswith("data:image/png;base64,")
+    assert api.delete("/api/company/director-signature").status_code == 200
+    assert database.companies.update_one.call_args.args[1]["$set"]["director_signature"] == ""
+
+def test_document_data_captures_current_director_signature(local_api):
+    _, database = local_api
+    database.companies.find_one.return_value = {"director_signature": "configured-signature"}
+    result = asyncio.run(server.build_document_data({"id": "letter", "company_id": "company-a", "petugas_id": "officer"}))
+    assert result["company"]["director_signature"] == "configured-signature"
+
+@pytest.mark.parametrize("content,mime", [(b"broken", "image/png"), (b"<svg/>", "image/svg+xml"), (b"x" * (2 * 1024 * 1024 + 1), "image/png")], ids=["corrupt", "svg", "too-large"])
+def test_director_signature_rejects_invalid_images(local_api, content, mime):
+    api, database = local_api
+    assert api.post("/api/company/director-signature", files={"file": ("signature", content, mime)}).status_code == 400
+    database.companies.update_one.assert_not_called()
+
+def test_director_signature_rejects_officers(local_api):
+    api, database = local_api
+    server.app.dependency_overrides.pop(server.admin_required)
+    database.users.find_one.return_value = OFFICER
+    assert api.post("/api/company/director-signature", files={"file": ("signature.png", login_background_png(), "image/png")}, headers=bearer(OFFICER)).status_code == 403
+    assert api.delete("/api/company/director-signature", headers=bearer(OFFICER)).status_code == 403
+    database.companies.update_one.assert_not_called()
+
 
 @pytest.fixture
 def local_api(monkeypatch):

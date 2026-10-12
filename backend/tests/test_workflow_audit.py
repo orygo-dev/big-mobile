@@ -129,14 +129,15 @@ def test_closed_document_retains_original_snapshot(local_api, monkeypatch):
 
 def test_document_letterhead_follows_settings_without_rewriting_snapshot(local_api):
     api, db = local_api
-    snapshot = {"company": {"name": "Original legal company", "logo": "original-logo"}, "official": "immutable"}
+    snapshot = {"company": {"name": "Original legal company", "logo": "original-logo", "director_signature": "original-signature"}, "official": "immutable"}
     db.assignment_letters.find_one.return_value = {"id":"letter", "company_id":"company-a", "document_snapshot":snapshot, "document_status":"ACTIVE"}
-    settings = {"id":"company-a", "nama":"PT Current", "alamat":"Current address", "email":"office@example.com", "telepon":"021123", "logo":"current-logo"}
+    settings = {"id":"company-a", "nama":"PT Current", "alamat":"Current address", "email":"office@example.com", "telepon":"021123", "logo":"current-logo", "director_signature":"new-signature"}
     db.companies.find_one.return_value = settings
     response = api.get('/api/surat-tugas/letter/document')
     assert response.status_code == 200
     assert response.json()['letterhead'] == {"name":"PT Current", "address":"Current address", "email":"office@example.com", "phone":"021123", "logo":"current-logo"}
     assert response.json()['data'] == snapshot
+    assert response.json()['director_signature'] == "original-signature"
     db.companies.find_one.assert_awaited_with({"id":"company-a"}, {"_id":0})
     db.assignment_letters.update_one.assert_not_called()
 
