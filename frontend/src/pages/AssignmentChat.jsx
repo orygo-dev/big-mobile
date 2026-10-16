@@ -10,6 +10,15 @@ export function mergeMessages(previous, incoming) {
   return [...records.values()].sort((a, b) => a.sequence - b.sequence);
 }
 
+export function messageId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export default function AssignmentChat() {
   const { assignmentId } = useParams(), { user } = useAuth();
   const base = user.role === 'admin' ? '/admin' : '/app';
@@ -80,12 +89,12 @@ export default function AssignmentChat() {
   async function send(event) {
     event.preventDefault(); if (sending.current || !thread || thread.read_only || (!text.trim() && !files.length && !location)) return;
     sending.current = true; setBusy(true); setSendError('');
-    if (!retry.current) retry.current = { id: crypto.randomUUID(), text, files: [...files], location };
-    const pending = retry.current, data = new FormData();
-    data.append('client_message_id', pending.id); data.append('text', pending.text);
-    if (pending.location) data.append('location', JSON.stringify(pending.location));
-    pending.files.forEach(file => data.append('files', file));
     try {
+      if (!retry.current) retry.current = { id: messageId(), text, files: [...files], location };
+      const pending = retry.current, data = new FormData();
+      data.append('client_message_id', pending.id); data.append('text', pending.text);
+      if (pending.location) data.append('location', JSON.stringify(pending.location));
+      pending.files.forEach(file => data.append('files', file));
       const { data: message } = await api.post(`${path}/messages`, data, { timeout: 120000 });
       if (!mounted.current) return;
       records.current = mergeMessages(records.current, [message]); setMessages(records.current);

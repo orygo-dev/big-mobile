@@ -69,3 +69,32 @@ def test_chat_read_cursor_is_clamped_and_monotonic(local_api):
     query, update = db.chat_reads.update_one.call_args.args
     assert query == {'company_id': ADMIN['company_id'], 'assignment_id': 'task', 'user_id': ADMIN['id']}
     assert update == {'$max': {'sequence': 7}}
+
+
+def test_chat_inbox_includes_active_tasks_without_messages(local_api):
+    api, db = local_api
+    db.users.find_one.return_value = ADMIN
+    db.assignments.find.return_value.to_list.return_value = [{'id': 'task', 'company_id': ADMIN['company_id'], 'status': 'AKTIF', 'officer_id': OFFICER['id']}]
+    result = api.get('/api/chat', headers=bearer())
+    assert result.status_code == 200
+    assert result.json()['items'][0]['assignment_id'] == 'task'
+    assert 'mulai chat' in result.json()['items'][0]['last_message']
+    query = db.assignments.find.call_args.args[0]
+    assert query['company_id'] == ADMIN['company_id']
+    assert query['$or'] == [{'status': 'AKTIF'}, {'chat_sequence': {'$gt': 0}}]
+
+
+def test_chat_inbox_keeps_officer_scope(local_api):
+    api, db = local_api
+    db.users.find_one.return_value = OFFICER
+    assert api.get('/api/chat', headers=bearer(OFFICER)).status_code == 200
+    query = db.assignments.find.call_args.args[0]
+    assert query['company_id'] == OFFICER['company_id']
+    assert query['officer_id'] == OFFICER['id']
+
+
+def test_new_chat_choices_only_include_active_assignments(local_api):
+    api, db = local_api
+    db.users.find_one.return_value = OFFICER
+    assert api.get('/api/chat?active_only=true', headers=bearer(OFFICER)).status_code == 200
+    assert db.assignments.find.call_args.args[0] == {'company_id': OFFICER['company_id'], 'officer_id': OFFICER['id'], 'status': 'AKTIF'}

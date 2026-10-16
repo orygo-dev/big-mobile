@@ -50,7 +50,15 @@ try {
   await ap.goto(origin+'/admin/penugasan');await ap.getByTestId('penugasan-create-button').click();await ap.getByTestId('penugasan-unit-select').click();await ap.getByRole('option').filter({hasText:unit.nama_debitur}).click();await ap.getByTestId('penugasan-petugas-select').click();await ap.getByRole('option').filter({hasText:'QA officer'}).click();
   let pending=ap.waitForResponse(response=>response.url().endsWith('/api/penugasan')&&response.request().method()==='POST');await ap.getByTestId('penugasan-submit-button').click();const assigned=await pending;assert.equal(assigned.status(),200);const letter=await assigned.json();
   await op.goto(origin+'/app/tugas/'+unit.id);const authority=op.getByTestId('detail-tugas-surat-kuasa');await authority.waitFor();assert.equal((await officer.request.get(origin+await authority.getAttribute('href'))).status(),200);
-  await op.getByTestId('detail-tugas-chat').click();await op.getByTestId('chat-text').fill('Koordinasi chat browser QA');
+  for(const [page,base] of [[ap,'/admin'],[op,'/app']]) {
+    await page.goto(origin+base+'/chat');await page.getByTestId('chat-new-message').click();
+    await page.getByTestId('chat-start-'+letter.assignment_id).waitFor();
+    await page.screenshot({path:path.join(path.dirname(fixture.print_pdf),base==='/admin'?'chat-new-admin.png':'chat-new-officer.png'),fullPage:true});
+    await page.getByTestId('chat-start-'+letter.assignment_id).click();await page.getByTestId('chat-composer').waitFor();
+  }
+  // Browsers without randomUUID (including insecure contexts) must still send.
+  await op.evaluate(()=>{Object.defineProperty(window.crypto,'randomUUID',{value:undefined,configurable:true});});
+  await op.getByTestId('chat-text').fill('Koordinasi chat browser QA');
   await op.getByTestId('chat-file-input').setInputFiles([fixture.image,fixture.pdf]);
   await op.evaluate(()=>{window.__qaGeo=navigator.geolocation.getCurrentPosition;navigator.geolocation.getCurrentPosition=(_,failure)=>failure({code:1});});
   await op.getByTestId('chat-share-location').click();await op.getByRole('alert').filter({hasText:'Lokasi belum tersedia'}).waitFor();

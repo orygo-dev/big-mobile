@@ -39,7 +39,7 @@ def live(tmp_path_factory):
         assert response.status_code==expected,f'{method} {path}: {response.status_code} {response.text[:200]}'
         return response
     try:
-        for _ in range(60):
+        for _ in range(int(os.environ.get('TEST_DATABASE_READY_SECONDS', '60'))):
             if process.poll() is not None:raise RuntimeError('Integration server failed; inspect isolated server.log')
             try:
                 if requests.get(url+'/health',timeout=2).status_code==200:break
@@ -240,6 +240,9 @@ def test_chat_attachment_location_idempotency_and_historical_access(live):
     import json
     from pypdf import PdfWriter
     account,_=unit(live);letter=assign(live,account);task=letter['assignment_id'];call=live['call'];db=live['db']
+    for role in ('admin', 'officer'):
+        inbox = call(role, 'GET', '/chat').json()['items']
+        assert any(item['assignment_id'] == task and 'mulai chat' in item['last_message'] for item in inbox)
     photo=io.BytesIO();Image.new('RGB',(32,32),'orange').save(photo,'PNG')
     pdf=io.BytesIO();writer=PdfWriter();writer.add_blank_page(width=100,height=100);writer.write(pdf)
     data={'client_message_id':str(uuid.uuid4()),'text':'Koordinasi kunjungan','location':json.dumps({'latitude':-6.2,'longitude':106.8,'accuracy':10})}

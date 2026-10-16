@@ -104,7 +104,14 @@ def register(router, runtime):
         letter = await runtime.db.assignment_letters.find_one({"assignment_id": record["id"], "company_id": record["company_id"]}, {"document_snapshot": 1, "snapshot_data": 1}) or {}
         snapshot = letter.get("document_snapshot") or letter.get("snapshot_data") or {}
         account = (snapshot.get("accounts") or [{}])[0]
-        return {"account_name": account.get("debtor_name", ""), "contract_number": account.get("contract_number", ""), "license_plate": account.get("license_plate", ""), "officer_name": snapshot.get("officer", {}).get("name", "Petugas")}
+        officer = snapshot.get("officer") or {}
+        if not account:
+            current = await runtime.db.accounts.find_one({"id": record.get("account_id"), "company_id": record["company_id"]}) or {}
+            account = {"debtor_name": current.get("nama_debitur", ""), "contract_number": current.get("nomor_kontrak", ""), "license_plate": current.get("nomor_polisi", "")}
+        if not officer:
+            current = await runtime.db.users.find_one({"id": record.get("officer_id"), "company_id": record["company_id"]}) or {}
+            officer = {"name": current.get("name", "Petugas")}
+        return {"account_name": account.get("debtor_name", ""), "contract_number": account.get("contract_number", ""), "license_plate": account.get("license_plate", ""), "officer_name": officer.get("name", "Petugas")}
 
     async def unread(record, user):
         read = await runtime.db.chat_reads.find_one({"company_id": user["company_id"], "assignment_id": record["id"], "user_id": user["id"]})
@@ -116,14 +123,17 @@ def register(router, runtime):
         return {"count": await runtime.db.unread_messages(user)}
 
     @router.get("/chat")
-    async def inbox(page: int = Query(1, ge=1), limit: int = Query(30, ge=1, le=100), user: dict = Depends(runtime.get_current_user)):
-        query = {"company_id": user["company_id"], "chat_sequence": {"$gt": 0}}
+    async def inbox(page: int = Query(1, ge=1), limit: int = Query(30, ge=1, le=100), active_only: bool = Query(False), user: dict = Depends(runtime.get_current_user)):
+        query = {"company_id": user["company_id"], "$or": [{"status": runtime.ASSIGNMENT_ACTIVE}, {"chat_sequence": {"$gt": 0}}]}
+        if active_only:
+            query.pop("$or")
+            query["status"] = runtime.ASSIGNMENT_ACTIVE
         if user["role"] == "petugas": query["officer_id"] = user["id"]
         elif user["role"] != "admin": raise HTTPException(403, "Akses chat tidak diizinkan")
         records = await runtime.db.assignments.find(query, {"_id": 0}).sort([("chat_updated_at", -1), ("id", 1)]).skip((page - 1) * limit).to_list(limit + 1)
         items = []
         for record in records[:limit]:
-            items.append({"assignment_id": record["id"], "number": record.get("assignment_number", ""), "status": record["status"], "last_message": record.get("chat_preview", ""), "updated_at": record.get("chat_updated_at"), "unread": await unread(record, user), **await context(record)})
+            items.append({"assignment_id": record["id"], "number": record.get("assignment_number", ""), "status": record["status"], "last_message": record.get("chat_preview") or "Belum ada pesan. Klik untuk mulai chat.", "updated_at": record.get("chat_updated_at"), "unread": await unread(record, user), **await context(record)})
         return {"items": items, "next_page": page + 1 if len(records) > limit else None}
 
     @router.get("/chat/{assignment_id}")
