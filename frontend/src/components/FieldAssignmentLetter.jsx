@@ -29,6 +29,7 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
       .field-letter .field-clauses > li { padding-left: 3px; margin-bottom: 3px; text-align: justify; }
       .field-letter .field-unit { margin: 4px 0; break-inside: avoid; }
       .field-letter .field-signers { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8%; text-align: center; break-inside: avoid; margin-top: 8px; }
+      .field-letter .field-closing { break-inside: avoid; }
       .field-letter .field-signature { height: 22mm; display: flex; justify-content: center; align-items: center; }
       .field-letter .field-signature img { width: 50mm; height: 22mm; object-fit: contain; }
       .field-letter .field-verification { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 8px; break-inside: avoid; }
@@ -69,6 +70,7 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
       <li>PENERIMA TUGAS wajib mempertanggungjawabkan pelaksanaan tugas, melaporkan setiap kejadian dan tidak mengalihkan penugasan tanpa persetujuan tertulis. Pelanggaran dapat mengakibatkan pencabutan tugas dan tindak lanjut sesuai ketentuan yang berlaku.</li>
       <li>Surat tugas berlaku sejak <b>{date(d.letter.valid_from)}</b> sampai dengan <b>{date(d.letter.valid_until)}</b>, dan berakhir apabila tugas selesai atau penugasan dibatalkan/dicabut oleh PEMBERI TUGAS.</li>
     </ol>
+    <div className="field-closing">
     <div style={{ textAlign: "right", marginTop: 8 }}>{company.city || "-"}, {date(d.letter.issue_date)}</div>
     <div className="field-signers">
       <div>PEMBERI TUGAS<br /><b>{company.name}</b></div><div>PENERIMA TUGAS<br />{d.officer.position || "Petugas"}</div>
@@ -82,5 +84,6 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
       <div style={{ marginLeft: "auto" }}>Tembusan:<br />1. {finance}<br />2. Administrasi {company.name}<br />3. Arsip</div>
     </div>
     <div className="field-footer">{[company.address, company.email && `Email: ${company.email}`, company.phone && `Telp: ${company.phone}`].filter(Boolean).join(" · ")}</div>
+    </div>
   </div>;
 }

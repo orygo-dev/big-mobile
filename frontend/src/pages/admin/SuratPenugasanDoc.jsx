@@ -86,11 +86,12 @@ export default function SuratPenugasanDoc() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#e2e8f0", paddingBottom: 40 }}>
+    <div className="doc-layout" style={{ minHeight: "100vh", background: "#e2e8f0", paddingBottom: 40 }}>
       <style>{`
         @page { size: A4; margin: 0; }
         @media print {
           body { background: #fff !important; }
+          .doc-layout { padding-bottom: 0 !important; background: #fff !important; }
           .doc-toolbar { display: none !important; }
           .doc-page { box-shadow: none !important; margin: 0 !important; page-break-after: always; }
           .doc-page:last-child { page-break-after: auto; }

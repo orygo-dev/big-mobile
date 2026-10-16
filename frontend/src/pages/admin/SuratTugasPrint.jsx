@@ -26,7 +26,7 @@ export default function SuratTugasPrint() {
   const qrSrc = `${API}/surat-tugas/${id}/qr`;
 
   return (
-    <div className="min-h-screen bg-slate-100 py-6">
+    <div className="assignment-print min-h-screen bg-slate-100 py-6">
       <div className="no-print max-w-[210mm] mx-auto px-4 mb-4 flex items-center justify-between">
         <button onClick={() => navigate("/admin/surat-tugas")} className="flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900">
           <ArrowLeft className="w-4 h-4" /> Kembali
@@ -39,7 +39,7 @@ export default function SuratTugasPrint() {
       <style>{`
         @page { size: A4; margin: 0; }
         .doc-page { width: 210mm; min-height: 297mm; margin: 0 auto; background: white; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #111; }
-        @media print { .no-print { display: none !important; } body { background: white !important; } }
+        @media print { .no-print { display: none !important; } body { background: white !important; } .assignment-print { padding: 0 !important; background: white !important; } }
       `}</style>
       <FieldAssignmentLetter doc={letter} qrSrc={qrSrc} />
     </div>
