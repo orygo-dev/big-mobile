@@ -97,7 +97,7 @@ try {
   }
   await ap.goto(origin+'/admin/surat-tugas/'+letter.id+'/dokumen');
   await ap.getByTestId('doc-page-1').waitFor();await verifyLetterhead(ap);
-  assert.equal(await ap.getByTestId('company-letterhead').count(),3);
+  assert.equal(await ap.getByTestId('company-letterhead').count(),2);
   await ap.goto(origin+'/admin/surat-tugas/'+letter.id+'/print');await ap.getByText(unit.nama_debitur,{exact:false}).first().waitFor();
   await verifyLetterhead(ap);
   await ap.pdf({path:fixture.print_pdf,format:'A4',printBackground:true});

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Printer, Download, ArrowLeft, CheckCircle2, Ban, FileText } from "lucide-react";
 import { toast } from "sonner";
 import CompanyLetterhead from "@/components/CompanyLetterhead";
+import FieldAssignmentLetter from "@/components/FieldAssignmentLetter";
 
 const DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -125,94 +126,7 @@ export default function SuratPenugasanDoc() {
         </div>
       </div>
 
-      {/* PAGE 1 */}
-      <div className="doc-page" data-testid="doc-page-1">
-        <CompanyLetterhead company={letterhead} title="SURAT PENUGASAN" number={d.letter.document_number || "(akan dibuat saat finalisasi)"} />
-        <p style={{ margin: "8px 0 2px" }}>Saya yang bertanda tangan di bawah ini:</p>
-        <table><tbody>
-          <Row label="Nama" value={d.company.director_name} />
-          <Row label="Jabatan" value={d.company.director_position} />
-        </tbody></table>
-        <p style={{ margin: "4px 0" }}>Dalam hal ini bertindak untuk dan atas nama <b>{d.company.name}</b> yang berkedudukan di {d.company.city || "-"}, selanjutnya disebut sebagai "PERSEROAN".</p>
-
-        <p style={{ margin: "10px 0 2px" }}>Dengan ini memberikan tugas kepada:</p>
-        <table><tbody>
-          <Row label="Nama" value={d.officer.name} />
-          <Row label="Nik" value={d.officer.nik} />
-          <Row label="Jabatan" value={d.officer.position} />
-          <Row label="No. Sertifikasi" value={`${d.officer.certification_number || "-"}${d.officer.certification_valid_until ? ` (berlaku s.d. ${fdate(d.officer.certification_valid_until)})` : ""}`} />
-        </tbody></table>
-        <p style={{ margin: "4px 0" }}>Selanjutnya disebut sebagai "PENERIMA TUGAS". PENERIMA TUGAS dalam menjalankan penugasan ini bertindak untuk dan atas nama "PERSEROAN", sebatas kewenangan yang diberikan dalam Surat Penugasan ini, untuk melaksanakan hal-hal sebagai berikut:</p>
-
-        <div className="doc-h2">RUANG LINGKUP TUGAS</div>
-        <ol>
-          <li>
-            {subst(t.ruang_lingkup_intro, map)}
-            {d.accounts.map((a, i) => (
-              <div key={i} style={{ margin: "4px 0 6px", paddingLeft: 4 }}>
-                <table className="spec-table"><tbody>
-                  <Row label="Debitur" value={a.debtor_name} />
-                  <Row label="Alamat" value={a.debtor_address} />
-                </tbody></table>
-                <div style={{ margin: "3px 0 2px" }}>Dengan spesifikasi kendaraan sebagai berikut:</div>
-                <table className="spec-table"><tbody>
-                  <Row label="Jenis/Merk" value={a.brand} />
-                  <Row label="Nomor Polisi" value={a.license_plate} />
-                  <Row label="Nomor Rangka" value={a.chassis_number} />
-                  <Row label="Nomor Mesin" value={a.engine_number} />
-                  <Row label="Warna/Tahun Unit" value={`${a.color || "-"} / ${a.year || "-"}`} />
-                </tbody></table>
-              </div>
-            ))}
-          </li>
-          <li>{subst(t.ruang_lingkup_closing, map)}</li>
-        </ol>
-
-        <div className="doc-h2">LARANGAN</div>
-        <ol>{(t.larangan || []).map((x, i) => <li key={i}>{x}</li>)}</ol>
-        <Footer data={d} />
-      </div>
-
-      {/* PAGE 2 */}
-      <div className="doc-page" data-testid="doc-page-2">
-        <CompanyLetterhead company={letterhead} title="SURAT PENUGASAN" number={d.letter.document_number || "(akan dibuat saat finalisasi)"} />
-        <div className="doc-h2">KEWAJIBAN DAN TANGGUNG JAWAB</div>
-        <ol>{(t.kewajiban || []).map((x, i) => <li key={i}>{x}</li>)}</ol>
-
-        <div className="doc-h2">BATAS KEWENANGAN DAN PELANGGARAN</div>
-        {(t.batas_kewenangan || []).map((x, i) => <p key={i} style={{ margin: "3px 0" }}>{x}</p>)}
-
-        <div className="doc-h2">MASA BERLAKU</div>
-        <p style={{ margin: "3px 0" }}>{subst(t.masa_berlaku, map)}</p>
-
-        <p style={{ margin: "18px 0 0" }}>{d.company.city || "-"}, {fdate(d.letter.issue_date)}</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: "10%", textAlign: "center", marginTop: 10, breakInside: "avoid" }}>
-          <div>
-            <div>PENERIMA TUGAS</div>
-          </div>
-          <div>
-            <div>PEMBERI TUGAS</div>
-            <div>{d.company.director_position} {d.company.name}</div>
-          </div>
-          <div style={{ height: "22mm" }} />
-          <div style={{ height: "22mm", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {(doc.director_signature || d.company.director_signature) && <img src={doc.director_signature ?? d.company.director_signature} alt="Tanda tangan direktur" data-testid="director-signature" style={{ width: "50mm", height: "22mm", objectFit: "contain" }} />}
-          </div>
-          <div style={{ fontWeight: 700 }}>({d.officer.name})</div>
-          <div style={{ fontWeight: 700 }}>({d.company.director_name})</div>
-        </div>
-
-        <div className="doc-h2" style={{ marginTop: 24 }}>VERIFIKASI SURAT PENUGASAN</div>
-        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          {finalized ? <img src={qrSrc} alt="QR" style={{ width: 90, height: 90, border: "1px solid #ddd" }} crossOrigin="anonymous" data-testid="doc-qr" />
-            : <div style={{ width: 90, height: 90, border: "1px dashed #bbb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#999", textAlign: "center", padding: 4 }}>QR muncul setelah finalisasi</div>}
-          <div style={{ fontSize: 9 }}>
-            <div>Kode: <b>{d.letter.generate_code || "(belum dibuat)"}</b></div>
-            <div style={{ marginTop: 4, maxWidth: 360 }}>{t.verifikasi_note}</div>
-          </div>
-        </div>
-        <Footer data={d} />
-      </div>
+      <FieldAssignmentLetter doc={doc} qrSrc={qrSrc} />
 
       {/* PAGE 3 — BASTK (per unit) */}
       {d.accounts.map((a, idx) => (
