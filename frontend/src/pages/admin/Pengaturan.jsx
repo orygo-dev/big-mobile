@@ -10,6 +10,7 @@ import { formatDateTime } from "@/lib/constants";
 import { Building2, ScrollText, Loader2, Pencil, Upload, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import LoginAppearanceSettings from "@/components/LoginAppearanceSettings";
+import FonnteSettings from "@/components/FonnteSettings";
 import PasswordSettings from "@/components/PasswordSettings";
 import LoadError from "@/components/LoadError";
 
@@ -178,6 +179,7 @@ export default function Pengaturan() {
         )}
       </div>
 
+      <FonnteSettings />
       <PasswordSettings />
       {form && (
         <Dialog open={open} onOpenChange={setOpen}>

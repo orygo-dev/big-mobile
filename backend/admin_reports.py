@@ -144,6 +144,7 @@ def register(router, runtime):
             if status != "LAINNYA":
                 await runtime.db.accounts.update_one({"id": account["id"], "company_id": user["company_id"], "active_assignment_id": assignment_id}, {"$set": {"status": runtime.ACCOUNT_STATUS_MAP[status], "updated_at": runtime.now_iso()}})
             await runtime.log_audit(user, "Membuat laporan lapangan dan pembayaran tim", "field_report", report_id, request)
+            if proof: await runtime.whatsapp.enqueue(runtime, "payment", record, user)
             return {**record, "photos": [public_file(item) for item in saved if item["kind"] == "report"]}
         try:
             return await runtime.transactions.run(runtime.client, commit)
@@ -181,5 +182,6 @@ def register(router, runtime):
             await runtime.db.field_reports.update_one({"id": rid, "company_id": user["company_id"]}, {"$set": update})
             await persist_files([saved], user)
             await runtime.log_audit(user, "Mengunggah bukti pembayaran tim", "field_report", rid, request)
+            await runtime.whatsapp.enqueue(runtime, "payment", {**current, **update}, user)
             return {**current, **update}
         return await runtime.transactions.run(runtime.client, commit)

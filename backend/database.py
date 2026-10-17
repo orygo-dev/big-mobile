@@ -16,7 +16,7 @@ class ReturnDocument:
     AFTER=True
 
 connection_context=ContextVar('mysql_connection',default=None)
-TABLES=('users','companies','clients','power_of_attorneys','accounts','assignments','assignment_letters','field_reports','report_photos','documents','document_templates','audit_logs','debtors','counters','rate_limits','revoked_tokens','login_attempts','upload_intents','idempotency','chat_messages','chat_reads','production_checks')
+TABLES=('users','companies','clients','power_of_attorneys','accounts','assignments','assignment_letters','field_reports','report_photos','documents','document_templates','audit_logs','debtors','counters','rate_limits','revoked_tokens','login_attempts','upload_intents','idempotency','chat_messages','chat_reads','production_checks','notification_settings','whatsapp_notifications')
 TEXT_FIELDS=('id','company_id','email','active_key','submission_key','officer_id','petugas_id','assignment_id','account_id','client_id','surat_kuasa_id','power_of_attorney_id','report_id','sender_id','user_id','client_message_id','storage_path','status','created_at','chat_updated_at','expires_at','identifier','masa_berlaku')
 NUMBER_FIELDS=('sequence','chat_sequence','seq','count','token_version','relation_version','report_version')
 

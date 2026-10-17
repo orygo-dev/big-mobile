@@ -1062,6 +1062,7 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
     await log_audit(user, "Membuat penugasan", "assignment", assignment_id, request)
     await log_audit(user, "Menerbitkan Surat Penugasan", "assignment_letter", letter_id, request)
 
+    await whatsapp.enqueue(sys.modules[__name__], "approval", assignment, user)
     out = await enrich_letter(clean(letter))
     out["assignment_id"] = assignment_id
     out["assignment_number"] = assignment_number
@@ -1783,6 +1784,7 @@ import admin_reports
 import leasing_payments
 import finance
 import pks
+import whatsapp
 import owner_workflow
 import sys
 admin_reports.register(api_router, sys.modules[__name__])
@@ -1790,6 +1792,7 @@ leasing_payments.register(api_router, sys.modules[__name__])
 finance.register(api_router, sys.modules[__name__])
 pks.register(api_router, sys.modules[__name__])
 owner_workflow.register(api_router, sys.modules[__name__])
+whatsapp.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 
@@ -1892,6 +1895,10 @@ async def initialize_database():
     # Sparse key protects new submissions without requiring destructive legacy cleanup.
     await db.field_reports.create_index("submission_key", unique=True, sparse=True)
     await db.assignments.create_index("active_key", unique=True, sparse=True)
+    await db.notification_settings.create_index("id", unique=True)
+    await db.whatsapp_notifications.create_index("id", unique=True)
+    await db.whatsapp_notifications.create_index([("status", 1), ("created_at", 1)])
+    await db.whatsapp_notifications.create_index([("company_id", 1), ("created_at", -1)])
     await db.chat_messages.create_index("id", unique=True)
     await db.chat_messages.create_index([("company_id", 1), ("assignment_id", 1), ("sender_id", 1), ("client_message_id", 1)], unique=True)
     await db.chat_messages.create_index([("company_id", 1), ("assignment_id", 1), ("sequence", 1)], unique=True)
@@ -1974,10 +1981,11 @@ async def startup():
         app.state.storage_ready = False
         logger.warning("Object storage initialization failed: %s", type(exception).__name__)
     app.state.storage_task = asyncio.create_task(maintain_storage())
+    app.state.whatsapp_task = asyncio.create_task(whatsapp.worker(sys.modules[__name__]))
 
 @app.on_event("shutdown")
 async def shutdown():
-    for name in ("database_task", "storage_task"):
+    for name in ("database_task", "storage_task", "whatsapp_task"):
         task = getattr(app.state, name, None)
         if task:
             task.cancel()

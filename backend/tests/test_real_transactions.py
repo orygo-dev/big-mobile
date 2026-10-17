@@ -643,3 +643,38 @@ def test_owner_cli_recovery_and_real_login(live):
     assert requests.post(live['url']+'/auth/login',json={'email':email,'password':original},timeout=30).status_code==401
     after=requests.post(live['url']+'/auth/login',json={'email':email,'password':replacement},timeout=30)
     assert after.status_code==200 and after.json()['user']['role']=='owner'
+
+
+def test_whatsapp_outbox_tracks_approval_and_each_paid_team_member_without_live_send(live):
+    call,db=live['call'],live['db'];company=live['users']['admin']['company_id']
+    try:
+        response=call('admin','PUT','/whatsapp/settings',json={'enabled':False,'token':'isolated-test-only','owner_phone':'081234567890'}).json()
+        assert response['token_configured'] and 'token' not in response
+        stored=db.notification_settings.find_one({'id':company})
+        assert stored['token_encrypted']!='isolated-test-only'
+        # Intentionally unreadable token makes it impossible for the worker to call Fonnte.
+        db.notification_settings.update_one({'id':company},{'$set':{'enabled':True,'token_encrypted':'invalid-for-isolated-test'}})
+        for who in ['officer','other']:
+            db.users.update_one({'id':live['users'][who]['id']},{'$set':{'telepon':'081234567890'}})
+        account,_=unit(live)
+        letter=call('admin','POST','/penugasan',json={'account_id':account['id'],'petugas_ids':[live['users']['officer']['id'],live['users']['other']['id']]}).json()
+        jobs=db.whatsapp_notifications.find({'company_id':company,'event':'approval','entity_id':letter['assignment_id']})
+        assert len(jobs)==1 and jobs[0]['recipient_id']=='owner'
+        assert 'menunggu approval' in jobs[0]['message']
+        call('owner','POST','/penugasan/'+letter['assignment_id']+'/approve')
+        report=call('admin','POST','/laporan',data=report_payload(letter,account),files=report_files()).json()
+        assert db.whatsapp_notifications.count_documents({'entity_id':report['id']})==0
+        proof=report_files()['photos'];key=str(uuid.uuid4())
+        for _ in range(2):
+            call('admin','POST','/laporan/'+report['id']+'/payment',data={'payment_request_id':key},files={'file':proof})
+        jobs=db.whatsapp_notifications.find({'company_id':company,'event':'payment','entity_id':report['id']})
+        assert len(jobs)==2
+        assert {job['recipient_id'] for job in jobs}=={live['users'][who]['id'] for who in ['officer','other']}
+        assert all('Rp 500.000,00' in job['message'] and 'total tim (2 petugas)' in job['message'] for job in jobs)
+        assert call('foreign','GET','/whatsapp/notifications').json()==[]
+        call('officer','GET','/whatsapp/settings',403)
+        call('officer','GET','/whatsapp/notifications',403)
+        call('foreign','POST','/whatsapp/notifications/'+jobs[0]['id']+'/retry',404)
+    finally:
+        db.notification_settings.delete_many({'id':company})
+        db.whatsapp_notifications.delete_many({'company_id':company})
