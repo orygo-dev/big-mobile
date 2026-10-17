@@ -109,7 +109,10 @@ def test_bootstrap_owner_preserves_tenant_and_existing_password(local_api):
     from manage import bootstrap_owner
     _,db=local_api
     admin={**ADMIN,'email':'admin@example.com'}
-    db.users.find_one.side_effect=[admin,None]
+    saved={}
+    db.users.find_one.side_effect=lambda query,*_:admin if query.get('role')=='admin' else saved.get('owner')
+    async def insert(record):saved['owner']=record
+    db.users.insert_one.side_effect=insert
     async def commit(operation):return await operation()
     db.run_transaction=commit
     asyncio.run(bootstrap_owner(db,'Owner','owner@example.com','admin@example.com','owner-unit-test-password'))
@@ -119,3 +122,25 @@ def test_bootstrap_owner_preserves_tenant_and_existing_password(local_api):
     db.users.insert_one.reset_mock();db.users.find_one.side_effect=[admin,owner]
     asyncio.run(bootstrap_owner(db,'Owner','owner@example.com','admin@example.com','changed-password-unused'))
     db.users.insert_one.assert_not_called()
+
+
+def test_owner_password_recovery_does_not_change_other_roles_or_tenants(local_api):
+    from manage import bootstrap_owner
+    from types import SimpleNamespace
+    _,db=local_api;owner={**OWNER,'email':'owner@example.com','password_hash':bcrypt.hashpw(b'old-test-password',bcrypt.gensalt()).decode(),'token_version':2}
+    async def commit(operation):return await operation()
+    db.run_transaction=commit
+    db.users.find_one.side_effect=lambda query,*_:ADMIN if query.get('role')=='admin' else owner
+    async def update(query,changes):
+        assert query=={'id':'owner','company_id':ADMIN['company_id'],'role':'owner'}
+        owner.update(changes['$set']);owner['token_version']+=changes['$inc']['token_version']
+        return SimpleNamespace(matched_count=1)
+    db.users.update_one.side_effect=update
+    asyncio.run(bootstrap_owner(db,'Owner',owner['email'],'admin@example.com','recovered-test-password',True))
+    assert owner['token_version']==3 and bcrypt.checkpw(b'recovered-test-password',owner['password_hash'].encode())
+    db.users.insert_one.assert_not_called();db.audit_logs.insert_one.assert_awaited_once()
+    for role,company in [('admin',ADMIN['company_id']),('owner','foreign-company')]:
+        owner['role']=role;owner['company_id']=company
+        db.users.update_one.reset_mock()
+        with pytest.raises(ValueError):asyncio.run(bootstrap_owner(db,'Owner',owner['email'],'admin@example.com','recovered-test-password',True))
+        db.users.update_one.assert_not_called()

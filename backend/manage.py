@@ -50,21 +50,31 @@ async def bootstrap(database,name,email,company_name):
     await database.run_transaction(commit)
     print('Production administrator created; password was not logged.')
 
-async def bootstrap_owner(database,name,email,admin_email,password=None):
+async def bootstrap_owner(database,name,email,admin_email,password=None,reset_password=False):
     administrator=await database.users.find_one({'email':admin_email.strip().lower(),'role':'admin'})
     if not administrator:raise ValueError('Administrator reference was not found')
     existing=await database.users.find_one({'email':email.strip().lower()})
     if existing:
-        if existing.get('role')!='owner' or existing.get('company_id')!=administrator['company_id'] or existing.get('status')!='aktif':
+        if existing.get('role')!='owner' or existing.get('company_id')!=administrator['company_id']:
             raise ValueError('Email is already in use by another account')
-        print('Owner already exists; its password was preserved.');return
+        if not reset_password:
+            if existing.get('status')!='aktif':raise ValueError('Owner is inactive; explicit password reset is required')
+            print('Owner already exists; its password was preserved.');return
     password=password or getpass.getpass('Password awal owner: ')
     if len(password)<12 or len(password.encode())>72:raise ValueError('Owner password must contain 12-72 bytes')
     now=datetime.now(timezone.utc).isoformat()
+    hashed=bcrypt.hashpw(password.encode(),bcrypt.gensalt()).decode()
     async def commit():
-        await database.users.insert_one({'id':str(uuid.uuid4()),'company_id':administrator['company_id'],'name':name or 'Owner','email':email.strip().lower(),'role':'owner','status':'aktif','token_version':0,'created_at':now,'password_hash':bcrypt.hashpw(password.encode(),bcrypt.gensalt()).decode()})
+        if existing:
+            result=await database.users.update_one({'id':existing['id'],'company_id':administrator['company_id'],'role':'owner'},{'$set':{'password_hash':hashed,'status':'aktif','updated_at':now},'$inc':{'token_version':1}})
+            if result.matched_count!=1:raise ValueError('Owner changed during recovery')
+        else:
+            await database.users.insert_one({'id':str(uuid.uuid4()),'company_id':administrator['company_id'],'name':name or 'Owner','email':email.strip().lower(),'role':'owner','status':'aktif','token_version':0,'created_at':now,'password_hash':hashed})
+        await database.audit_logs.insert_one({'id':str(uuid.uuid4()),'company_id':administrator['company_id'],'user_id':'server-cli','user_name':'Server CLI','activity':'Reset password owner' if existing else 'Membuat owner','entity':'user','entity_id':existing['id'] if existing else email.strip().lower(),'timestamp':now})
     await database.run_transaction(commit)
-    print('Owner created successfully; password was not logged.')
+    saved=await database.users.find_one({'email':email.strip().lower(),'company_id':administrator['company_id'],'role':'owner'})
+    if not saved or not bcrypt.checkpw(password.encode(),saved['password_hash'].encode()):raise ValueError('Stored owner password verification failed')
+    print('Owner aktif; password tersimpan dan verifikasi hash berhasil. Password tidak ditampilkan.')
 
 async def main(args):
     import server
@@ -74,7 +84,7 @@ async def main(args):
         if args.command=='preflight':return await preflight(server.db,server.db)
         if args.command=='bootstrap-owner':
             if not args.email or not args.admin_email:raise ValueError('Owner requires --email and --admin-email')
-            await bootstrap_owner(server.db,args.name,args.email,args.admin_email,os.environ.pop('BOOTSTRAP_OWNER_PASSWORD',None));return 0
+            await bootstrap_owner(server.db,args.name,args.email,args.admin_email,os.environ.pop('BOOTSTRAP_OWNER_PASSWORD',None),args.reset_password);return 0
         if not all((args.name,args.email,args.company)):raise ValueError('Bootstrap requires --name, --email, --company')
         await bootstrap(server.db,args.name,args.email,args.company);return 0
     finally:await server.db.close()
@@ -82,6 +92,7 @@ async def main(args):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['init-db','preflight','bootstrap-admin','bootstrap-owner']);parser.add_argument('--env',type=Path)
     parser.add_argument('--admin-email')
+    parser.add_argument('--reset-password',action='store_true',help='Explicitly reset only a matching owner account; existing sessions are revoked')
     parser.add_argument('--name');parser.add_argument('--email');parser.add_argument('--company');args=parser.parse_args()
     if args.env:load_dotenv(args.env,override=True)
     try:raise SystemExit(asyncio.run(main(args)))

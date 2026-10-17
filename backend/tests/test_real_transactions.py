@@ -624,3 +624,22 @@ def test_owner_admin_creation_and_monthly_cash_cards(live):
     assert Decimal(after['expense'])-Decimal(before['expense'])==Decimal('500000.00')
     assert Decimal(after['profit'])-Decimal(before['profit'])==Decimal('700000.25')
     assert call('foreign','GET','/dashboard/finance').json()==foreign
+
+
+def test_owner_cli_recovery_and_real_login(live):
+    email='owner-recovery-'+uuid.uuid4().hex+'@example.com'
+    original=secrets.token_urlsafe(24);replacement=secrets.token_urlsafe(24)
+    command=[sys.executable,str(live['root']/'backend/manage.py'),'bootstrap-owner','--name','Recovery QA','--email',email,'--admin-email',live['users']['admin']['email']]
+    def provision(password,reset=False):
+        result=subprocess.run(command+(['--reset-password'] if reset else []),cwd=live['root'],env={**live['env'],'BOOTSTRAP_OWNER_PASSWORD':password},capture_output=True,text=True,timeout=90)
+        assert result.returncode==0,result.stdout+result.stderr
+        assert password not in result.stdout+result.stderr
+    provision(original)
+    first=requests.post(live['url']+'/auth/login',json={'email':email,'password':original},timeout=30)
+    assert first.status_code==200 and first.json()['user']['role']=='owner'
+    token=list(first.cookies.values())[0]
+    provision(replacement,True)
+    assert requests.get(live['url']+'/auth/me',headers={'Authorization':'Bearer '+token},timeout=30).status_code==401
+    assert requests.post(live['url']+'/auth/login',json={'email':email,'password':original},timeout=30).status_code==401
+    after=requests.post(live['url']+'/auth/login',json={'email':email,'password':replacement},timeout=30)
+    assert after.status_code==200 and after.json()['user']['role']=='owner'
