@@ -153,3 +153,12 @@ Status **Diterima Fonnte** berarti diterima antrean penyedia, bukan bukti terkir
 Token disimpan terenkripsi dalam tabel pengaturan khusus dan tidak dikembalikan oleh API, branding, atau audit log. Kunci diturunkan dari JWT_SECRET; setelah rotasi JWT_SECRET, simpan ulang token pada Pengaturan. Backup database dan konfigurasi rahasia harus dipertahankan bersama.
 
 Pembaruan aaPanel untuk instalasi yang sudah memiliki alur owner: jalankan `deploy/update-whatsapp.sh` sebagai root. Skrip menggunakan root `/www/wwwroot/big.rebornpartner.xyz`, mencadangkan kode yang diganti, membangun frontend, memulai ulang `big-mobile`, dan menunggu health siap. Konfigurasi server dan unggahan tetap dipertahankan. Tabel antrean dibuat otomatis saat startup. Setelah pembaruan, isi pengaturan Fonnte melalui aplikasi; skrip tidak mengirim pesan pengujian.
+
+
+### Nama perusahaan dan identitas instalasi ponsel
+
+Header admin/owner mengikuti **Nama Perusahaan** pada Pengaturan. Nama aplikasi di tab browser, dialog instalasi Chrome, dan metadata pintasan mengikuti **Nama Aplikasi**; ikon mengikuti logo PNG pada Pengaturan. Setelah menyimpan pengaturan, metadata halaman diperbarui tanpa menunggu login ulang.
+
+Manifest publik tersedia pada `/api/branding/manifest.webmanifest`, dengan `name`, `short_name`, identitas dan scope aplikasi yang stabil. Ikon PNG persegi 192 dan 512 piksel dibuat dari logo, menjaga proporsi dan menyediakan latar putih; favicon 32 piksel dan apple-touch-icon 180 piksel memakai sumber yang sama. Manifest tidak disimpan dalam cache dan URL ikon menyertakan versi branding. Tidak ada tanda tangan, token, atau informasi kontak privat dalam manifest. Branding publik memakai perusahaan yang sama dengan halaman login; instalasi ini menggunakan satu identitas aplikasi per domain.
+
+Pembaruan instalasi aaPanel yang sudah ada: jalankan `deploy/update-app-branding.sh` sebagai root. Setelah berhasil, buka ulang situs di Chrome. Untuk pintasan lama yang tetap memakai identitas sebelumnya, hapus pintasan lalu buat ulang; aplikasi yang sudah terpasang dapat meminta persetujuan pembaruan nama/ikon sesuai perilaku Chrome. Skrip tidak menghapus data aplikasi atau pengaturan. Dokumentasi pembaruan identitas Chrome: https://developer.chrome.com/blog/improvements-to-web-app-updates .
