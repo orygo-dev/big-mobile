@@ -25,13 +25,41 @@ function NewPKS({open,onOpenChange,onSaved}){
   const [search,setSearch]=useState(''),[page,setPage]=useState(1),[options,setOptions]=useState([]),[next,setNext]=useState(null),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState(''),[reload,setReload]=useState(0);
   const [selected,setSelected]=useState(null),[duration,setDuration]=useState('1'),[unit,setUnit]=useState('TAHUN'),[dates,setDates]=useState(null),[datesLoading,setDatesLoading]=useState(false),[datesError,setDatesError]=useState('');
   const [file,setFile]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');const key=useRef(null);
+  const [officerOpen,setOfficerOpen]=useState(false);
+  const officerPicker=useRef(null),officerInput=useRef(null);
   const validDuration=/^\d+$/.test(duration)&&Number(duration)>=1&&Number(duration)<=(unit==='TAHUN'?50:600);
   useEffect(()=>{
-    if(!open)return;
+    if(!open||!officerOpen)return;
     let active=true;setLoading(true);setLoadError('');
     const timer=setTimeout(()=>api.get('/pks/officers',{params:{search,page}}).then(({data})=>{if(active){setOptions(previous=>page===1?data.items:[...previous,...data.items.filter(item=>!previous.some(old=>old.id===item.id))]);setNext(data.next_page);}}).catch(e=>{if(active)setLoadError(errMsg(e));}).finally(()=>{if(active)setLoading(false);}),250);
     return ()=>{active=false;clearTimeout(timer);};
-  },[open,search,page,reload]);
+  },[open,officerOpen,search,page,reload]);
+  useEffect(()=>{
+    if(!officerOpen)return;
+    const closeOutside=event=>{if(!officerPicker.current?.contains(event.target))setOfficerOpen(false);};
+    document.addEventListener('pointerdown',closeOutside);
+    return ()=>document.removeEventListener('pointerdown',closeOutside);
+  },[officerOpen]);
+  function openOfficers(){
+    if(busy||officerOpen)return;
+    if(selected){setSearch('');setPage(1);setOptions([]);}
+    setOfficerOpen(true);
+  }
+  function chooseOfficer(item){
+    setSelected(item);setSearch('');setPage(1);setOptions([]);setOfficerOpen(false);edit();officerInput.current?.focus();
+  }
+  function pickerKeys(event){
+    if(event.key==='Escape'&&officerOpen){event.preventDefault();event.stopPropagation();setOfficerOpen(false);officerInput.current?.focus();}
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+      event.preventDefault();
+      if(!officerOpen){openOfficers();return;}
+      const choices=[...officerPicker.current.querySelectorAll('[role="option"]:not(:disabled)')];
+      if(!choices.length)return;
+      const index=choices.indexOf(document.activeElement);
+      choices[index<0?(event.key==='ArrowDown'?0:choices.length-1):(index+(event.key==='ArrowDown'?1:-1)+choices.length)%choices.length].focus();
+    }
+    if(event.key==='Enter'&&event.target===officerInput.current){event.preventDefault();if(!officerOpen)openOfficers();}
+  }
   useEffect(()=>{
     if(!open)return;
     setDates(null);setDatesError('');
@@ -51,12 +79,18 @@ function NewPKS({open,onOpenChange,onSaved}){
       await api.post('/pks',body,{timeout:120000});toast.success('PKS petugas berhasil disimpan');onSaved();
     }catch(e){setError(errMsg(e));}finally{setBusy(false);}
   }
-  return <Dialog open={open} onOpenChange={value=>{if(!busy)onOpenChange(value);}}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>PKS Baru</DialogTitle><DialogDescription>Pilih petugas dan durasi, lalu unggah dokumen PKS yang sudah disiapkan.</DialogDescription></DialogHeader>
+  return <Dialog open={open} onOpenChange={value=>{if(!busy)onOpenChange(value);}}><DialogContent onEscapeKeyDown={event=>{if(officerOpen){event.preventDefault();setOfficerOpen(false);officerInput.current?.focus();}}} className="max-h-[90vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>PKS Baru</DialogTitle><DialogDescription>Pilih petugas dan durasi, lalu unggah dokumen PKS yang sudah disiapkan.</DialogDescription></DialogHeader>
     <form onSubmit={save} className="space-y-4">
-      <div className="space-y-2"><label htmlFor="pks-officer-search" className="text-sm font-medium">Petugas</label><div className="relative"><Search className="w-4 h-4 absolute top-3 left-3 text-slate-400"/><Input id="pks-officer-search" placeholder="Cari nama atau kode petugas..." disabled={busy} value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setOptions([]);}} className="pl-9" data-testid="pks-officer-search"/></div>
-        <div role="listbox" aria-label="Daftar petugas PKS" className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">{options.map(item=><button type="button" role="option" aria-selected={selected?.id===item.id} key={item.id} disabled={busy} onClick={()=>{setSelected(item);edit();}} className={`w-full text-left p-3 flex items-center justify-between gap-3 ${selected?.id===item.id?'bg-blue-50':'hover:bg-slate-50'}`} data-testid={`pks-officer-${item.id}`}><div className="min-w-0"><p className="text-sm font-medium break-words">{item.name}</p><p className="text-xs text-slate-500">{item.petugas_code}</p><Badge state={item.pks_status} officer/></div>{selected?.id===item.id&&<Check className="w-4 h-4 shrink-0 text-blue-600"/>}</button>)}{loading&&<p className="p-3 text-sm text-slate-500">Memuat petugas...</p>}{!loading&&!loadError&&!options.length&&<p className="p-3 text-sm text-slate-500">Petugas tidak ditemukan.</p>}</div>
-        {next&&!loading&&<Button type="button" variant="outline" disabled={busy} onClick={()=>setPage(next)}>Muat petugas lainnya</Button>}
-        {loadError&&<div role="alert" className="text-sm text-red-600"><p>{loadError}</p><Button type="button" variant="outline" onClick={()=>setReload(v=>v+1)}>Coba lagi</Button></div>}
+      <div className="space-y-2"><label htmlFor="pks-officer-search" className="text-sm font-medium">Petugas</label>
+        <div ref={officerPicker} className="relative" onKeyDown={pickerKeys} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setOfficerOpen(false);}}>
+          <Search className="w-4 h-4 absolute top-3 left-3 text-slate-400"/>
+          <Input ref={officerInput} id="pks-officer-search" role="combobox" aria-expanded={officerOpen} aria-controls="pks-officer-options" aria-autocomplete="list" autoComplete="off" placeholder="Cari nama atau kode petugas..." disabled={busy} value={officerOpen?search:(selected?.name||search)} onClick={openOfficers} onChange={e=>{setSearch(e.target.value);setSelected(null);setPage(1);setOptions([]);setOfficerOpen(true);edit();}} className="pl-9" data-testid="pks-officer-search"/>
+          {officerOpen&&<div className="absolute z-30 top-full mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg max-h-56 overflow-y-auto">
+            <div id="pks-officer-options" role="listbox" aria-label="Daftar petugas PKS" className="divide-y divide-slate-100">{options.map(item=><button type="button" role="option" aria-selected={selected?.id===item.id} key={item.id} disabled={busy} onClick={()=>chooseOfficer(item)} className={`w-full text-left p-3 flex items-center justify-between gap-3 ${selected?.id===item.id?'bg-blue-50':'hover:bg-slate-50'}`} data-testid={`pks-officer-${item.id}`}><div className="min-w-0"><p className="text-sm font-medium break-words">{item.name}</p><p className="text-xs text-slate-500">{item.petugas_code}</p><Badge state={item.pks_status} officer/></div>{selected?.id===item.id&&<Check className="w-4 h-4 shrink-0 text-blue-600"/>}</button>)}{loading&&<p className="p-3 text-sm text-slate-500">Memuat petugas...</p>}{!loading&&!loadError&&!options.length&&<p className="p-3 text-sm text-slate-500">Petugas tidak ditemukan.</p>}</div>
+            {next&&!loading&&<Button type="button" variant="outline" className="m-2" disabled={busy} onClick={()=>setPage(next)}>Muat petugas lainnya</Button>}
+            {loadError&&<div role="alert" className="p-3 text-sm text-red-600"><p>{loadError}</p><Button type="button" variant="outline" onClick={()=>setReload(v=>v+1)}>Coba lagi</Button></div>}
+          </div>}
+        </div>
         {selected&&<div className="rounded-xl bg-blue-50 p-3 text-sm" data-testid="pks-selected-officer"><strong>{selected.name}</strong>{selected.pks_end_date&&<p className="mt-1 text-xs">PKS sebelumnya berlaku sampai {dateLabel(selected.pks_end_date)}. Dokumen sebelumnya tetap tersimpan.</p>}</div>}
       </div>
       <div className="grid grid-cols-2 gap-3"><label className="text-sm font-medium space-y-2" htmlFor="pks-duration">Durasi<Input id="pks-duration" type="number" min="1" max={unit==='TAHUN'?50:600} step="1" required disabled={busy} value={duration} onChange={e=>{setDuration(e.target.value);edit();}} data-testid="pks-duration"/></label><label className="text-sm font-medium space-y-2" htmlFor="pks-unit">Satuan<select id="pks-unit" disabled={busy} value={unit} onChange={e=>{setUnit(e.target.value);edit();}} className="block w-full h-10 border border-slate-200 rounded-xl px-3 bg-white" data-testid="pks-unit"><option value="TAHUN">Tahun</option><option value="BULAN">Bulan</option></select></label></div>
