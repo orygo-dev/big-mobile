@@ -136,3 +136,20 @@ Penugasan baru setelah versi ini dijalankan dimulai dengan status Menunggu Appro
 Badge owner menghitung antrean penugasan perusahaan terkait. Dashboard admin dan owner menampilkan pemasukan leasing, pembayaran petugas yang telah selesai, serta profit (pemasukan dikurangi pembayaran petugas) untuk bulan berjalan dalam WIB. Sumber total sama dengan Laporan Keuangan. Tanda tangan surat yang telah disetujui tetap mengikuti snapshot approval ketika gambar di Pengaturan diganti.
 
 Jika password owner perlu dipulihkan, tambahkan `--reset-password` pada perintah `bootstrap-owner`. Reset hanya menerima akun owner dalam perusahaan admin acuan; akun dengan role atau perusahaan berbeda tidak ditimpa. Setelah reset, sesi owner lama dicabut dan hash yang tersimpan dibaca kembali untuk memverifikasi password. Pembuatan/reset dicatat dalam audit log. Tanpa flag tersebut, password owner yang sudah ada tetap dipertahankan.
+
+
+### Notifikasi WhatsApp Fonnte
+
+Pengaturan → Notifikasi WhatsApp Fonnte tersedia bagi admin dan owner. Masukkan token perangkat Fonnte, nomor WhatsApp owner, dua format pesan, lalu aktifkan. Perangkat Fonnte harus sudah terhubung. Nomor petugas diambil dari kolom telepon pada data Petugas; format `08...` dinormalisasi menjadi `628...`.
+
+Penugasan baru menambahkan pesan approval owner. Laporan baru yang langsung dilengkapi bukti pembayaran, atau unggah bukti pembayaran susulan, menambahkan satu pesan kepada setiap petugas di tim. Nominal merupakan **total pembayaran tim**, bukan nominal per petugas. Laporan yang belum dibayar tidak mengirim pesan pembayaran. Kejadian lama saat fitur belum aktif tidak dikirim secara retroaktif.
+
+Placeholder yang didukung: `{perusahaan}`, `{nomor_penugasan}`, `{admin}`, `{nama_petugas}`, `{nominal_tim}`, `{tanggal_pembayaran}`, `{jumlah_petugas}`. Waktu pembayaran ditampilkan dalam WIB.
+
+Antrean disimpan di MySQL dalam transaksi yang sama dengan kejadian asal; pengiriman HTTP dikerjakan setelah commit oleh proses backend yang sama, tanpa Redis, Docker, atau layanan tambahan. Kegagalan Fonnte tidak membatalkan data yang sudah tersimpan. Riwayat 50 pesan terakhir tersedia di Pengaturan dengan tombol Perbarui dan Coba ulang untuk kegagalan pasti. Nomor penerima dibaca ulang ketika mencoba ulang. Notifikasi approval yang sudah tidak relevan dilewati.
+
+Status **Diterima Fonnte** berarti diterima antrean penyedia, bukan bukti terkirim ke ponsel. Timeout, respons ambigu, dan proses pengiriman yang terputus ditandai **Periksa di Fonnte** dan tidak diulang otomatis untuk mencegah duplikasi. Periksa riwayat penyedia sebelum mengirim ulang secara manual. API resmi: https://docs.fonnte.com/api-send-message/ .
+
+Token disimpan terenkripsi dalam tabel pengaturan khusus dan tidak dikembalikan oleh API, branding, atau audit log. Kunci diturunkan dari JWT_SECRET; setelah rotasi JWT_SECRET, simpan ulang token pada Pengaturan. Backup database dan konfigurasi rahasia harus dipertahankan bersama.
+
+Pembaruan aaPanel untuk instalasi yang sudah memiliki alur owner: jalankan `deploy/update-whatsapp.sh` sebagai root. Skrip menggunakan root `/www/wwwroot/big.rebornpartner.xyz`, mencadangkan kode yang diganti, membangun frontend, memulai ulang `big-mobile`, dan menunggu health siap. Konfigurasi server dan unggahan tetap dipertahankan. Tabel antrean dibuat otomatis saat startup. Setelah pembaruan, isi pengaturan Fonnte melalui aplikasi; skrip tidak mengirim pesan pengujian.
