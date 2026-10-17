@@ -4,7 +4,7 @@ set -euo pipefail
 cd /www/wwwroot/big.rebornpartner.xyz
 
 stage=$(mktemp -d)
-base=https://raw.githubusercontent.com/orygo-dev/big-mobile/7a69fe55a0760a9df68ce12aa5af839d1a83075a
+base=https://raw.githubusercontent.com/orygo-dev/big-mobile/9ceb421b18af00ba4d717742fea89c7d5bbf16dd
 files=(
   backend/server.py
   backend/owner_workflow.py
