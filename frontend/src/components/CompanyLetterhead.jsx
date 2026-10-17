@@ -8,8 +8,8 @@ export default function CompanyLetterhead({ company = {}, title, number }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12, borderBottom: "3px solid #111", paddingBottom: 10 }}>
         {company.logo && <img src={company.logo} alt={`Logo ${name}`} style={{ width: 76, height: 64, flexShrink: 0, objectFit: "contain" }} />}
         <div style={{ flex: 1, textAlign: "center", overflowWrap: "anywhere" }}>
-          <div style={{ fontSize: 23, fontWeight: 800, lineHeight: 1.2, color: "#0066cc", printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
-            {name.split(/(\bGENERASI\b)/i).map((part, index) => <span key={index} style={/^generasi$/i.test(part) ? { color: "#ff8a00" } : undefined}>{part}</span>)}
+          <div style={{ fontSize: 23, fontWeight: 800, lineHeight: 1.2, color: "#0070c0", printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
+            {name.split(/(\bGENERASI\b)/i).map((part, index) => <span key={index} style={/^generasi$/i.test(part) ? { color: "#ff0000" } : undefined}>{part}</span>)}
           </div>
           {address && <div style={{ fontSize: 10, lineHeight: 1.4, marginTop: 3, whiteSpace: "pre-line" }}>{address}</div>}
           {(company.email || phone) && <div style={{ fontSize: 10, lineHeight: 1.4, marginTop: 2 }}>
