@@ -481,3 +481,44 @@ def test_database_disconnect_during_login_returns_service_unavailable(local_api)
     assert response.status_code == 503
     assert "dipulihkan" in response.json()["detail"]
     assert server.app.state.database_ready is False
+
+
+def test_install_manifest_uses_settings_and_updates_icon_revision(local_api):
+    api,db=local_api
+    import base64
+    logo='data:image/png;base64,'+base64.b64encode(login_background_png()).decode()
+    db.companies.find_one.return_value={'app_name':'Klik BIG','nama':'PT Nama Pengaturan','logo':logo,'director_signature':'PRIVATE','email':'PRIVATE'}
+    response=api.get('/api/branding/manifest.webmanifest')
+    assert response.status_code==200 and response.headers['content-type'].startswith('application/manifest+json')
+    assert response.headers['cache-control']=='no-store'
+    manifest=response.json()
+    assert manifest['name']==manifest['short_name']=='Klik BIG'
+    assert manifest['id']=='/' and manifest['start_url']=='/' and manifest['scope']=='/'
+    assert [icon['sizes'] for icon in manifest['icons']]==['192x192','512x512']
+    assert 'PRIVATE' not in response.text
+    previous=manifest['icons'][0]['src']
+    db.companies.find_one.return_value={'app_name':'Nama Baru','logo':logo}
+    assert api.get('/api/branding/manifest.webmanifest').json()['icons'][0]['src']!=previous
+
+
+@pytest.mark.parametrize('size',[32,180,192,512])
+def test_install_icons_are_real_png_and_preserve_uploaded_logo(local_api,size):
+    api,db=local_api
+    import base64,io
+    from PIL import Image
+    logo=io.BytesIO();Image.new('RGBA',(100,50),(0,120,255,255)).save(logo,format='PNG')
+    db.companies.find_one.return_value={'app_name':'Configured App','logo':'data:image/png;base64,'+base64.b64encode(logo.getvalue()).decode()}
+    response=api.get(f'/api/branding/icon/{size}.png')
+    assert response.status_code==200 and response.headers['content-type']=='image/png'
+    with Image.open(io.BytesIO(response.content)) as result:
+        assert result.size==(size,size) and result.format=='PNG'
+        assert result.getpixel((size//2,size//2))[:3]==(0,120,255)
+        assert result.getpixel((0,0))[:3]==(255,255,255)
+
+
+def test_install_icon_handles_missing_logo_and_rejects_bad_saved_logo(local_api):
+    api,db=local_api
+    assert api.get('/api/branding/icon/192.png').status_code==200
+    assert api.get('/api/branding/icon/9999.png').status_code==404
+    db.companies.find_one.return_value={'logo':'https://example.com/untrusted.png'}
+    assert api.get('/api/branding/icon/192.png').status_code==422

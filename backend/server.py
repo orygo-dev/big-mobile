@@ -1616,7 +1616,7 @@ async def get_branding():
     c = await db.companies.find_one({}, {"_id": 0}) or {}
     background = c.get("login_background") or {}
     return {
-        "app_name": c.get("app_name") or "FieldCollector",
+        "app_name": c.get("app_name") or "BIG Mobile",
         "logo": c.get("logo") or "",
         "company_name": c.get("nama") or "",
         "login_background": {
@@ -1785,6 +1785,7 @@ import leasing_payments
 import finance
 import pks
 import whatsapp
+import app_branding
 import owner_workflow
 import sys
 admin_reports.register(api_router, sys.modules[__name__])
@@ -1793,6 +1794,7 @@ finance.register(api_router, sys.modules[__name__])
 pks.register(api_router, sys.modules[__name__])
 owner_workflow.register(api_router, sys.modules[__name__])
 whatsapp.register(api_router, sys.modules[__name__])
+app_branding.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 

@@ -54,7 +54,7 @@ const NAV_GROUPS = [
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
-  const { appName, logo } = useBranding();
+  const { appName, logo, companyName } = useBranding();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -124,7 +124,7 @@ export default function AdminLayout() {
               {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </Button>
             <div>
-              <p className="text-xs text-slate-400 font-mono uppercase tracking-wider">PT Garda Koleksi Nusantara</p>
+              <p className="text-xs text-slate-400 font-mono uppercase tracking-wider">{companyName || appName}</p>
               <p className="text-sm font-semibold text-slate-700">Panel Administrasi</p>
             </div>
           </div>

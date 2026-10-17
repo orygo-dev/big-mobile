@@ -678,3 +678,29 @@ def test_whatsapp_outbox_tracks_approval_and_each_paid_team_member_without_live_
     finally:
         db.notification_settings.delete_many({'id':company})
         db.whatsapp_notifications.delete_many({'company_id':company})
+
+
+def test_public_installation_metadata_tracks_saved_company_branding(live):
+    db=live['db'];company=live['users']['admin']['company_id']
+    original=db.companies.find_one({'id':company})
+    import base64
+    logo=io.BytesIO();Image.new('RGB',(100,60),(0,120,255)).save(logo,format='PNG')
+    try:
+        db.companies.update_one({'id':company},{'$set':{'app_name':'Configured Mobile','nama':'PT Configured Company','logo':'data:image/png;base64,'+base64.b64encode(logo.getvalue()).decode()}})
+        response=requests.get(live['url']+'/branding/manifest.webmanifest',timeout=15)
+        assert response.status_code==200
+        manifest=response.json()
+        assert manifest['name']==manifest['short_name']=='Configured Mobile'
+        assert response.headers['cache-control']=='no-store'
+        for icon in manifest['icons']:
+            result=requests.get(live['url'].removesuffix('/api')+icon['src'],timeout=15)
+            assert result.status_code==200 and result.headers['content-type']=='image/png'
+            with Image.open(io.BytesIO(result.content)) as decoded:
+                assert icon['sizes']==f'{decoded.width}x{decoded.height}'
+                assert decoded.getpixel((decoded.width//2,decoded.height//2))[:3]==(0,120,255)
+        old_icon=manifest['icons'][0]['src']
+        db.companies.update_one({'id':company},{'$set':{'app_name':'Renamed Mobile'}})
+        changed=requests.get(live['url']+'/branding/manifest.webmanifest',timeout=15).json()
+        assert changed['name']=='Renamed Mobile' and changed['icons'][0]['src']!=old_icon
+    finally:
+        db.companies.update_one({'id':company},{'$set':{'app_name':original.get('app_name','BIG Mobile'),'nama':original.get('nama',''),'logo':original.get('logo','')}})

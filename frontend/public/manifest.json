@@ -1,9 +1,9 @@
 {
-  "short_name": "FieldCollector",
-  "name": "FieldCollector - Manajemen Lapangan",
+  "short_name": "BIG Mobile",
+  "name": "BIG Mobile",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%230066ff'/%3E%3Crect y='164' width='192' height='28' rx='14' fill='%23ff9900'/%3E%3Ctext x='96' y='126' font-size='96' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle'%3EFC%3C/text%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%230066ff'/%3E%3Crect y='164' width='192' height='28' rx='14' fill='%23ff9900'/%3E%3Ctext x='96' y='126' font-size='96' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle'%3EBIG%3C/text%3E%3C/svg%3E",
       "sizes": "192x192",
       "type": "image/svg+xml"
     }
