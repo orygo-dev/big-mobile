@@ -72,7 +72,8 @@ export default function LaporanPetugas() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-slate-400 uppercase tracking-wider">
                 <tr className="text-left">
-                  <th className="px-5 py-3 font-medium">Tanggal</th>
+                  <th className="px-5 py-3 font-medium">Tanggal Dibuat</th>
+                  <th className="px-3 py-3 font-medium">Tanggal Selesai</th>
                   <th className="px-3 py-3 font-medium">Petugas</th>
                   <th className="px-3 py-3 font-medium">Surat Tugas</th>
                   <th className="px-3 py-3 font-medium">Debitur</th>
@@ -87,6 +88,7 @@ export default function LaporanPetugas() {
                 {items.map((r) => (
                   <tr key={r.id} className="border-t border-slate-50 hover:bg-slate-50/50" data-testid={`laporan-row-${r.id}`}>
                     <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{formatDateTime(r.created_at)}</td>
+                    <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{r.payment_status === "SELESAI" && r.payment_recorded_at ? formatDateTime(r.payment_recorded_at) : ""}</td>
                     <td className="px-3 py-3 font-medium text-slate-700">{r.petugas_name}</td>
                     <td className="px-3 py-3 font-mono text-xs text-slate-600">{r.letter_nomor}</td>
                     <td className="px-3 py-3 text-slate-700">{r.nama_debitur}</td>
