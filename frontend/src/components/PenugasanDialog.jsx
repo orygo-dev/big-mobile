@@ -10,14 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, ClipboardList, CheckCircle2, FileText } from "lucide-react";
 import { toast } from "sonner";
 
-// 1 Penugasan = 1 Unit = 1 Petugas = 1 Surat Penugasan.
+// One unit, one letter, and one or more assigned officers.
 // `accountId` (optional) preselects a unit (e.g. from the Kontrak & Unit page).
 export default function PenugasanDialog({ open, onOpenChange, accountId = null, onSuccess }) {
   const navigate = useNavigate();
   const requestKey = useRef(null);
   const [petugasList, setPetugasList] = useState([]);
   const [unitList, setUnitList] = useState([]);
-  const [petugasId, setPetugasId] = useState("");
+  const [petugasIds, setPetugasIds] = useState([]);
   const [unitId, setUnitId] = useState(accountId || "");
   const [validFrom, setValidFrom] = useState(new Date().toISOString().slice(0, 10));
   const [validUntil, setValidUntil] = useState("");
@@ -31,7 +31,7 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
     if (!open) return;
     requestKey.current = crypto.randomUUID();
     setResult(null);
-    setPetugasId(""); setCatatan(""); setValidUntil("");
+    setPetugasIds([]); setCatatan(""); setValidUntil("");
     setValidFrom(new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date()));
     setUnitId(accountId || "");
     setLoadingOptions(true); setOptionsError(""); setPetugasList([]); setUnitList([]);
@@ -45,13 +45,13 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
 
   const submit = async () => {
     if (!unitId) { toast.error("Pilih satu unit terlebih dahulu"); return; }
-    if (!petugasId) { toast.error("Pilih satu petugas terlebih dahulu"); return; }
+    if (!petugasIds.length) { toast.error("Pilih minimal satu petugas terlebih dahulu"); return; }
     if (!validFrom || (validUntil && validUntil < validFrom)) {toast.error("Periksa tanggal mulai dan akhir penugasan"); return;}
     if (saving) return;
     setSaving(true);
     try {
       const { data } = await api.post("/penugasan", {
-        petugas_id: petugasId,
+        petugas_ids: petugasIds,
         account_id: unitId,
         valid_from: validFrom,
         valid_until: validUntil || null,
@@ -70,13 +70,13 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
   const close = () => {
     if (saving) return;
     onOpenChange(false);
-    setPetugasId(""); setUnitId(accountId || ""); setCatatan(""); setValidUntil("");
+    setPetugasIds([]); setUnitId(accountId || ""); setCatatan(""); setValidUntil("");
     setResult(null);
   };
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) close(); else onOpenChange(v); }}>
-      <DialogContent className="sm:max-w-md" data-testid="penugasan-dialog">
+      <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto" data-testid="penugasan-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-heading">
             <ClipboardList className="w-5 h-5 text-blue-600" /> Buat Penugasan
@@ -137,17 +137,21 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
                 )}
               </div>
               <div>
-                <Label>Pilih Petugas</Label>
-                <Select value={petugasId} onValueChange={setPetugasId}>
+                <Label>Pilih Petugas ({petugasIds.length} dipilih)</Label>
+                <Select value="" disabled={saving || petugasIds.length >= 50} onValueChange={(id) => setPetugasIds(previous => previous.includes(id) ? previous : [...previous, id])}>
                   <SelectTrigger className="mt-1.5 rounded-xl" data-testid="penugasan-petugas-select">
-                    <SelectValue placeholder="-- Pilih Petugas --" />
+                    <SelectValue placeholder="-- Tambahkan petugas --" />
                   </SelectTrigger>
                   <SelectContent>
-                    {petugasList.map((p) => (
+                    {petugasList.filter((p) => !petugasIds.includes(p.id)).map((p) => (
                       <SelectItem key={p.id} value={p.id}>{p.name} ({p.petugas_code})</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="mt-2 space-y-2" data-testid="penugasan-selected-officers">
+                  {petugasIds.map(id => <div key={id} className="flex items-center justify-between gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-800"><span>{petugasList.find(p => p.id === id)?.name || id}</span><button type="button" disabled={saving} aria-label={`Hapus ${petugasList.find(p => p.id === id)?.name || id}`} onClick={() => setPetugasIds(previous => previous.filter(value => value !== id))}>Hapus</button></div>)}
+                </div>
+                <p className="mt-2 text-xs text-slate-500">Tambahkan satu atau beberapa petugas. Semua petugas tercantum dalam satu surat dan memiliki akses ke tugas yang sama.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

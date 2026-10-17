@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from urllib.parse import urlsplit, unquote, parse_qs
 import aiomysql
 import pymysql
+from assignment_team import member_query
 
 class DuplicateKeyError(Exception): pass
 class ConnectionFailure(Exception): pass
@@ -266,9 +267,13 @@ class Database:
         for name in ('idempotency','revoked_tokens','login_attempts','rate_limits'):await self[name].delete_many({'expires_at':{'$lt':datetime.now(timezone.utc).isoformat()}})
     async def unread_messages(self,user):
         query={'company_id':user['company_id'],'sender_id':{'$ne':user['id']}}
-        if user['role']=='petugas':query['officer_id']=user['id']
         where,params=compile_query(query,'m')
-        sql=f'SELECT COUNT(*) FROM bm_chat_messages m LEFT JOIN bm_chat_reads r ON r.g_company_id=m.g_company_id AND r.g_assignment_id=m.g_assignment_id AND r.g_user_id=%s WHERE {where} AND m.g_sequence>COALESCE(r.g_sequence,0)'
+        scope=''
+        if user['role']=='petugas':
+            membership,values=compile_query(member_query({},user['id']),'a')
+            scope=' AND '+membership
+            params.extend(values)
+        sql=f'SELECT COUNT(*) FROM bm_chat_messages m JOIN bm_assignments a ON a.g_id=m.g_assignment_id AND a.g_company_id=m.g_company_id LEFT JOIN bm_chat_reads r ON r.g_company_id=m.g_company_id AND r.g_assignment_id=m.g_assignment_id AND r.g_user_id=%s WHERE {where} AND m.g_sequence>COALESCE(r.g_sequence,0){scope}'
         rows=await self.execute(sql,[user['id'],*params],fetch=True);return int(rows[0][0])
     async def close(self):
         if self.pool:self.pool.close();await self.pool.wait_closed();self.pool=None;await asyncio.sleep(0)

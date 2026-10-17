@@ -19,7 +19,7 @@ def live(tmp_path_factory):
     company='company-'+uuid.uuid4().hex
     password=secrets.token_urlsafe(24)
     users={}
-    for label,role in [('admin','admin'),('officer','petugas'),('other','petugas'),('foreign','admin')]:
+    for label,role in [('admin','admin'),('officer','petugas'),('other','petugas'),('outsider','petugas'),('foreign','admin')]:
         person={'id':uuid.uuid4().hex,'company_id':company if label!='foreign' else 'foreign-company','role':role,'name':'QA '+label,'email':label+'.'+name+'@example.com','status':'aktif','petugas_code':label,'password_hash':bcrypt.hashpw(password.encode(),bcrypt.gensalt()).decode()}
         db.users.insert_one(person);users[label]=person
     db.companies.insert_one({'id':company,'nama':'Production QA','company_code':'QA','app_name':'BIG Mobile'})
@@ -225,7 +225,7 @@ def test_https_browser_workflow_and_network_recovery(live):
     key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()));cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM));Image.new('RGB',(64,64),'blue').save(image)
     fixture=temporary/'browser-fixture.json'
     print_pdf=temporary/'printed-letter.pdf'
-    fixture.write_text(json.dumps({'api_url':live['url'],'web_port':live['web_port'],'key':str(key_path),'cert':str(cert_path),'image':str(image),'pdf':str(pdf),'print_pdf':str(print_pdf),'password':live['password'],'admin_email':live['users']['admin']['email'],'officer_email':live['users']['officer']['email'],'admin_token':live['tokens']['admin']}))
+    fixture.write_text(json.dumps({'api_url':live['url'],'web_port':live['web_port'],'key':str(key_path),'cert':str(cert_path),'image':str(image),'pdf':str(pdf),'print_pdf':str(print_pdf),'password':live['password'],'admin_email':live['users']['admin']['email'],'officer_email':live['users']['officer']['email'],'teammate_email':live['users']['other']['email'],'admin_token':live['tokens']['admin']}))
     try:
         result=subprocess.run(['node',str(live['root']/'frontend/e2e/workflow.mjs')],env={**os.environ,'E2E_FIXTURE_PATH':str(fixture)},capture_output=True,text=True,timeout=240)
         assert result.returncode==0,result.stdout+'\n'+result.stderr
@@ -317,3 +317,55 @@ def test_chat_send_racing_close_never_writes_after_closed_state(live):
     assert db.assignments.find_one({'id':task})['status']=='SELESAI'
     assert db.chat_messages.count_documents({'assignment_id':task})==int(response.status_code==200)
     live['call']('officer','POST',f'/chat/{task}/messages',409,data={'client_message_id':str(uuid.uuid4()),'text':'Definitely closed'})
+
+
+def test_team_assignment_letter_chat_report_and_access_isolation(live):
+    import json
+    account, sk = unit(live); call = live['call']; db = live['db']
+    ids = [live['users'][role]['id'] for role in ('officer', 'other')]
+    letter = call('admin', 'POST', '/penugasan', json={'account_id': account['id'], 'petugas_ids': ids}).json()
+    task = letter['assignment_id']
+    assert letter['petugas_count'] == 2 and letter['petugas_ids'] == ids
+    assert db.assignments.count_documents({'account_id': account['id']}) == 1
+    assert db.assignment_letters.count_documents({'assignment_id': task}) == 1
+    for role in ('officer', 'other'):
+        assert any(item['assignment_id'] == task for item in call(role, 'GET', '/my/tugas').json())
+        document = call(role, 'GET', f"/my/surat-tugas/{letter['id']}/document").json()
+        assert [person['id'] for person in document['data']['officers']] == ids
+        assert call(role, 'GET', f'/my/tugas/{account["id"]}').json()['letter_id'] == letter['id']
+    for role in ('outsider', 'foreign'):
+        call(role, 'GET', f'/chat/{task}', 404)
+        # Foreign is an administrator and cannot use the officer endpoint.
+        call(role, 'GET', f"/my/surat-tugas/{letter['id']}/document", 403 if role == 'foreign' else 404)
+    filtered = call('admin', 'GET', '/surat-tugas?petugas_id='+ids[1]).json()
+    assert any(item['id'] == letter['id'] for item in filtered)
+    call('admin', 'POST', f'/chat/{task}/messages', data={'client_message_id': str(uuid.uuid4()), 'text': 'Pesan untuk seluruh tim'})
+    for role in ('officer', 'other'):
+        assert call(role, 'GET', f'/chat/{task}').json()['unread'] == 1
+        assert call(role, 'GET', '/chat/unread').json()['count'] >= 1
+    call('other', 'POST', f'/chat/{task}/read', json={'sequence': 1})
+    assert call('officer', 'GET', f'/chat/{task}').json()['unread'] == 1
+    photo = io.BytesIO(); Image.new('RGB', (32,32), 'blue').save(photo, 'PNG')
+    message = call('other', 'POST', f'/chat/{task}/messages', data={'client_message_id': str(uuid.uuid4()), 'location': json.dumps({'latitude': -6.2, 'longitude': 106.8})}, files={'files': ('team.png', photo.getvalue(), 'image/png')}).json()
+    attachment = message['attachments'][0]['url'][4:]
+    call('officer', 'GET', attachment); call('outsider', 'GET', attachment, 404)
+    report = call('other', 'POST', '/laporan', data=report_payload(letter, account), files={'photos': ('proof.png', photo.getvalue(), 'image/png')}).json()
+    assert report['petugas_id'] == ids[1]
+    call('officer', 'POST', '/laporan', 400, data=report_payload(letter, account))
+    assert db.field_reports.count_documents({'assignment_id': task}) == 1
+    for role in ('officer', 'other'):
+        assert any(item['id'] == report['id'] for item in call(role, 'GET', '/my/riwayat').json())
+        call(role, 'GET', report['photos'][0]['url'][4:])
+    call('outsider', 'GET', report['photos'][0]['url'][4:], 404)
+    call('admin', 'DELETE', '/petugas/'+ids[1], 409)
+    call('admin', 'PATCH', f"/surat-tugas/{letter['id']}/status", json={'status': 'selesai'})
+    assert call('other', 'GET', f'/chat/{task}').json()['assignment']['read_only']
+    verification = call('admin', 'GET', '/public/verify/'+letter['generate_code']).json()
+    assert verification['petugas_names'] == ['QA officer', 'QA other']
+    assert 'nik' not in verification and 'accounts' not in verification
+
+
+def test_team_assignment_rejects_foreign_member_without_partial_creation(live):
+    account, _ = unit(live)
+    live['call']('admin', 'POST', '/penugasan', 404, json={'account_id': account['id'], 'petugas_ids': [live['users']['officer']['id'], live['users']['foreign']['id']]})
+    assert live['db'].assignments.count_documents({'account_id': account['id']}) == 0

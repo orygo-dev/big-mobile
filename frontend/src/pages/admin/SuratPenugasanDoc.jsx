@@ -6,6 +6,7 @@ import { Loader2, Printer, Download, ArrowLeft, CheckCircle2, Ban, FileText } fr
 import { toast } from "sonner";
 import CompanyLetterhead from "@/components/CompanyLetterhead";
 import FieldAssignmentLetter from "@/components/FieldAssignmentLetter";
+import { useAuth } from "@/context/AuthContext";
 
 const DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -45,14 +46,17 @@ function Footer({ data }) {
 export default function SuratPenugasanDoc() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const officerView = user.role === "petugas";
+  const back = officerView ? "/app/tugas" : "/admin/surat-tugas";
   const [doc, setDoc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    api.get(`/surat-tugas/${id}/document`).then(({ data }) => setDoc(data))
-      .catch((e) => { toast.error(errMsg(e)); navigate("/admin/surat-tugas"); }).finally(() => setLoading(false));
-  }, [id, navigate]);
+    api.get(`${officerView ? "/my" : ""}/surat-tugas/${id}/document`).then(({ data }) => setDoc(data))
+      .catch((e) => { toast.error(errMsg(e)); navigate(back); }).finally(() => setLoading(false));
+  }, [id, navigate, officerView, back]);
   useEffect(() => { load(); }, [load]);
 
   const cancel = async () => {
@@ -111,7 +115,7 @@ export default function SuratPenugasanDoc() {
       {/* Toolbar */}
       <div className="doc-toolbar" style={{ maxWidth: "210mm", margin: "0 auto", padding: "16px 8px 0" }}>
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <button onClick={() => navigate("/admin/surat-tugas")} className="flex items-center gap-1.5 text-sm text-slate-700 hover:text-slate-900" data-testid="doc-back">
+          <button onClick={() => navigate(back)} className="flex items-center gap-1.5 text-sm text-slate-700 hover:text-slate-900" data-testid="doc-back">
             <ArrowLeft className="w-4 h-4" /> Kembali
           </button>
           <div className="flex items-center gap-2 flex-wrap">
@@ -120,7 +124,7 @@ export default function SuratPenugasanDoc() {
             </span>
             <Button onClick={() => doPrint("")} variant="outline" className="rounded-xl" data-testid="doc-print-button"><Printer className="w-4 h-4 mr-1" /> Cetak</Button>
             <Button onClick={() => doPrint(".pdf")} className="rounded-xl bg-slate-900 hover:bg-slate-800" data-testid="doc-download-button"><Download className="w-4 h-4 mr-1" /> Download PDF</Button>
-            {doc.letter_status === "aktif" && (
+            {!officerView && doc.letter_status === "aktif" && (
               <Button onClick={cancel} disabled={busy} variant="outline" className="rounded-xl border-rose-200 text-rose-600 hover:bg-rose-50" data-testid="doc-cancel-button"><Ban className="w-4 h-4 mr-1" /> Batalkan</Button>
             )}
           </div>
@@ -177,7 +181,7 @@ export default function SuratPenugasanDoc() {
 
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, textAlign: "center", fontSize: 9.5 }}>
             <div style={{ width: "24%" }}><div>YANG MENYERAHKAN</div><div style={{ height: 40 }} /><div>(-)</div><div>Debitur/Pemakai Unit</div></div>
-            <div style={{ width: "24%" }}><div>YANG MENERIMA</div><div style={{ height: 40 }} /><div style={{ fontWeight: 700 }}>({d.officer.name})</div><div>{d.officer.position}</div><div>No. HP: {d.officer.phone || "-"}</div></div>
+            <div style={{ width: "24%" }}><div>YANG MENERIMA</div>{(d.officers?.length ? d.officers : [d.officer]).map((officer, index) => <div key={officer.id || index} style={{breakInside: "avoid"}}><div style={{ height: 40 }} /><div style={{ fontWeight: 700 }}>({officer.name})</div><div>{officer.position}</div><div>No. HP: {officer.phone || "-"}</div></div>)}</div>
             <div style={{ width: "24%" }}><div>MENGETAHUI</div><div style={{ height: 40 }} /><div>(&nbsp;&nbsp;&nbsp;&nbsp;)</div><div>Suami/Istri/Saksi/Penjamin</div></div>
             <div style={{ width: "24%" }}><div>YANG MENERIMA</div><div style={{ height: 40 }} /><div>(&nbsp;&nbsp;&nbsp;&nbsp;)</div><div>Admin Coll</div></div>
           </div>

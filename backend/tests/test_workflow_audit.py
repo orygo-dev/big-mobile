@@ -52,6 +52,43 @@ def test_assignment_end_defaults_to_authority_end(local_api, monkeypatch):
     assert db.assignments.insert_one.call_args.args[0]["valid_until"] == "2099-12-31"
 
 
+def test_assignment_team_creates_one_assignment_and_one_letter(local_api, monkeypatch):
+    api, db = local_api
+    configure_assignment(db, monkeypatch, {"status": "aktif", "tanggal_berakhir": "2099-12-31"})
+    response = api.post('/api/penugasan', json={"account_id": "unit", "petugas_ids": ["officer", "second"]})
+    assert response.status_code == 200
+    db.assignments.insert_one.assert_awaited_once()
+    db.assignment_letters.insert_one.assert_awaited_once()
+    assert db.assignments.insert_one.call_args.args[0]['officer_ids'] == ['officer', 'second']
+    assert db.assignment_letters.insert_one.call_args.args[0]['petugas_ids'] == ['officer', 'second']
+    assert response.json()['petugas_id'] == 'officer'
+
+
+@pytest.mark.parametrize('payload', [{}, {'petugas_ids': []}, {'petugas_ids': ['same', 'same']}, {'petugas_id': 'different', 'petugas_ids': ['first', 'second']}])
+def test_assignment_team_rejects_empty_duplicate_or_conflicting_members(local_api, payload):
+    api, db = local_api
+    assert api.post('/api/penugasan', json={'account_id': 'unit', **payload}).status_code == 422
+    db.assignments.insert_one.assert_not_called()
+
+
+@pytest.mark.parametrize('second', [None, {'id': 'second', 'status': 'nonaktif'}])
+def test_assignment_validates_every_member_before_reserving_unit(local_api, monkeypatch, second):
+    api, db = local_api
+    configure_assignment(db, monkeypatch, {'status': 'aktif'})
+    db.users.find_one.side_effect = lambda query, *args: {'id': 'officer', 'status': 'aktif'} if query['id'] == 'officer' else second
+    response = api.post('/api/penugasan', json={'account_id': 'unit', 'petugas_ids': ['officer', 'second']})
+    assert response.status_code in (400, 404)
+    db.assignments.insert_one.assert_not_called()
+
+
+def test_document_snapshot_contains_all_officers_in_selected_order(local_api):
+    _, db = local_api
+    db.users.find_one.side_effect = lambda query, *args: {'id': query['id'], 'name': 'Name '+query['id'], 'nik': 'NIK-'+query['id']}
+    data = asyncio.run(server.build_document_data({'id': 'letter', 'company_id': 'company-a', 'petugas_id': 'first', 'petugas_ids': ['first', 'second']}))
+    assert [officer['name'] for officer in data['officers']] == ['Name first', 'Name second']
+    assert data['officer']['name'] == 'Name first'
+
+
 @pytest.mark.parametrize("authority,end", [({"status": "aktif", "tanggal_berakhir": "2000-01-01"}, None), ({"status": "aktif", "tanggal_berakhir": "2099-01-01"}, "2099-02-01"), ({"status": "aktif", "tanggal_berlaku": "2099-01-01"}, None)])
 def test_assignment_must_fit_authority_dates(local_api, monkeypatch, authority, end):
     api, db = local_api

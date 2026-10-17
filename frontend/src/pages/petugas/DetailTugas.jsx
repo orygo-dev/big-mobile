@@ -82,6 +82,7 @@ export default function DetailTugas() {
           <Navigation className="w-4 h-4 text-blue-600" /> Buka Maps
         </button>
         {data.surat_kuasa_file && <a href={fileUrl(data.surat_kuasa_file)} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 py-3.5 font-semibold text-blue-700" data-testid="detail-tugas-surat-kuasa"><FileText className="h-4 w-4" />Buka Surat Kuasa</a>}
+        {data.letter_id && <button onClick={() => navigate(`/app/surat-tugas/${data.letter_id}/dokumen`)} className="w-full rounded-2xl border border-blue-200 bg-white text-blue-700 py-3.5 font-semibold" data-testid="detail-tugas-surat-penugasan">Buka Surat Penugasan</button>}
         <button onClick={() => navigate(`/app/chat/${data.assignment_id}`)} className="w-full rounded-2xl bg-blue-600 text-white py-3.5 font-semibold" data-testid="detail-tugas-chat">Chat dengan admin</button>
       </div>
 

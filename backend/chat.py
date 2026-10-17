@@ -12,6 +12,7 @@ from fastapi import Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from database import ReturnDocument
+from assignment_team import member_query
 from pypdf.errors import PdfReadError
 from starlette.concurrency import run_in_threadpool
 
@@ -89,7 +90,7 @@ def validate_attachment(content, filename, runtime):
 def register(router, runtime):
     async def assignment(assignment_id, user):
         query = {"id": assignment_id, "company_id": user["company_id"]}
-        if user["role"] == "petugas": query["officer_id"] = user["id"]
+        if user["role"] == "petugas": query = member_query(query, user["id"])
         elif user["role"] != "admin": raise HTTPException(403, "Akses chat tidak diizinkan")
         record = await runtime.db.assignments.find_one(query, {"_id": 0})
         if not record: raise HTTPException(404, "Percakapan tidak ditemukan")
@@ -105,6 +106,9 @@ def register(router, runtime):
         snapshot = letter.get("document_snapshot") or letter.get("snapshot_data") or {}
         account = (snapshot.get("accounts") or [{}])[0]
         officer = snapshot.get("officer") or {}
+        team = snapshot.get("officers") or []
+        if team:
+            officer = {"name": ", ".join(person.get("name", "") for person in team)}
         if not account:
             current = await runtime.db.accounts.find_one({"id": record.get("account_id"), "company_id": record["company_id"]}) or {}
             account = {"debtor_name": current.get("nama_debitur", ""), "contract_number": current.get("nomor_kontrak", ""), "license_plate": current.get("nomor_polisi", "")}
@@ -128,7 +132,7 @@ def register(router, runtime):
         if active_only:
             query.pop("$or")
             query["status"] = runtime.ASSIGNMENT_ACTIVE
-        if user["role"] == "petugas": query["officer_id"] = user["id"]
+        if user["role"] == "petugas": query = member_query(query, user["id"])
         elif user["role"] != "admin": raise HTTPException(403, "Akses chat tidak diizinkan")
         records = await runtime.db.assignments.find(query, {"_id": 0}).sort([("chat_updated_at", -1), ("id", 1)]).skip((page - 1) * limit).to_list(limit + 1)
         items = []

@@ -26,7 +26,7 @@ export default function Penugasan() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-heading text-2xl font-bold text-slate-900">Penugasan</h1>
-          <p className="text-sm text-slate-500 mt-1">Satu penugasan = satu unit = satu petugas = satu Surat Penugasan.</p>
+          <p className="text-sm text-slate-500 mt-1">Satu penugasan untuk satu unit, satu atau beberapa petugas, dan satu Surat Penugasan.</p>
         </div>
         <Button onClick={() => setDialogOpen(true)} className="rounded-xl bg-blue-600 hover:bg-blue-700" data-testid="penugasan-create-button">
           <Plus className="w-4 h-4 mr-1" /> Buat Penugasan
@@ -36,17 +36,20 @@ export default function Penugasan() {
       {loading ? (
         <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
       ) : letters.length === 0 ? (
-        <div className="brand-panel rounded-2xl border border-slate-200"><EmptyState icon={ClipboardList} title="Belum ada penugasan" desc="Klik Buat Penugasan untuk menugaskan satu unit kepada seorang petugas." /></div>
+        <div className="brand-panel rounded-2xl border border-slate-200"><EmptyState icon={ClipboardList} title="Belum ada penugasan" desc="Klik Buat Penugasan untuk menugaskan satu unit kepada satu atau beberapa petugas." /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {letters.map((l) => (
             <div key={l.id} className="brand-panel rounded-2xl border border-slate-200 p-5" data-testid={`penugasan-card-${l.id}`}>
               <div className="flex items-start justify-between">
                 <p className="font-mono text-sm font-semibold text-slate-800">{l.document_number || l.nomor}</p>
-                <StatusBadge map={LETTER_STATUS} value={l.status} />
+                <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                  <StatusBadge map={LETTER_STATUS} value={l.status} />
+                  <span className="rounded-full bg-blue-100 text-blue-700 px-2 py-1 text-xs font-semibold whitespace-nowrap" data-testid={`penugasan-officer-count-${l.id}`}>{l.petugas_count || l.petugas_ids?.length || 1} Petugas</span>
+                </div>
               </div>
               <div className="mt-3 space-y-1 text-sm">
-                <p className="text-slate-700"><span className="text-slate-400">Petugas:</span> {l.petugas_name} ({l.petugas_code})</p>
+                <p className="text-slate-700"><span className="text-slate-400">Petugas:</span> {l.petugas?.length ? l.petugas.map(p => `${p.name} (${p.petugas_code})`).join(", ") : l.petugas_name}</p>
                 <p className="text-slate-700"><span className="text-slate-400">Pemberi Kuasa:</span> {l.client_name}</p>
                 <p className="text-slate-700"><span className="text-slate-400">Unit:</span> {l.accounts?.[0]?.nama_debitur || "-"} · {l.accounts?.[0]?.nomor_polisi || "-"}</p>
                 <p className="text-slate-500 text-xs mt-1">Dibuat {formatDate(l.tanggal)}</p>

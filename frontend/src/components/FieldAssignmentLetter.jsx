@@ -10,6 +10,7 @@ const date = (value) => {
 export default function FieldAssignmentLetter({ doc, qrSrc }) {
   const d = doc.data;
   const company = d.company;
+  const officers = d.officers?.length ? d.officers : [d.officer];
   const signature = doc.director_signature ?? company.director_signature;
   const finance = d.finance.name || "pemberi kuasa";
   const row = (label, value) => <tr key={label}><td>{label}</td><td>: {value || "-"}</td></tr>;
@@ -44,9 +45,9 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
     </tbody></table>
     <p>Dengan ini bertindak untuk dan atas nama <b>{company.name}</b> yang berkedudukan di {company.city || "-"}, selanjutnya disebut <b>PEMBERI TUGAS</b>, dalam pelaksanaan penugasan dari <b>{finance}</b>, menunjuk dan memberikan tugas kepada:</p>
     <table className="field-officer"><thead><tr><th>No.</th><th>Nama</th><th>NIK</th><th>No. SPPI / Sertifikasi</th><th>Jabatan</th></tr></thead>
-      <tbody><tr><td>1</td><td><b>{d.officer.name}</b></td><td>{d.officer.nik || "-"}</td><td>{d.officer.certification_number || "-"}</td><td>{d.officer.position || "Petugas"}</td></tr></tbody>
+      <tbody>{officers.map((officer, index) => <tr key={officer.id || index}><td>{index + 1}</td><td><b>{officer.name}</b></td><td>{officer.nik || "-"}</td><td>{officer.certification_number || "-"}</td><td>{officer.position || "Petugas"}</td></tr>)}</tbody>
     </table>
-    <p>Petugas tersebut di atas selanjutnya disebut <b>PENERIMA TUGAS</b>.</p>
+    <p>Petugas yang tercantum di atas selanjutnya disebut <b>PENERIMA TUGAS</b> dan melaksanakan penugasan ini bersama-sama.</p>
     <div className="field-special">KHUSUS</div>
     <p>PEMBERI TUGAS memberikan wewenang kepada PENERIMA TUGAS untuk melaksanakan hal-hal sebagai berikut:</p>
     <ol className="field-clauses">
@@ -73,10 +74,9 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
     <div className="field-closing">
     <div style={{ textAlign: "right", marginTop: 8 }}>{company.city || "-"}, {date(d.letter.issue_date)}</div>
     <div className="field-signers">
-      <div>PEMBERI TUGAS<br /><b>{company.name}</b></div><div>PENERIMA TUGAS<br />{d.officer.position || "Petugas"}</div>
-      <div className="field-signature">{signature && <img src={signature} alt="Tanda tangan direktur" data-testid="director-signature" />}</div><div className="field-signature" />
-      <div><b><u>{company.director_name || "-"}</u></b></div><div><b><u>{d.officer.name || "-"}</u></b></div>
-      <div>{company.director_position || "Direktur"}</div><div>{d.officer.position || "Petugas"}</div>
+      <div>PEMBERI TUGAS<br /><b>{company.name}</b></div><div>PENERIMA TUGAS<br />{officers.length} Petugas</div>
+      <div><div className="field-signature">{signature && <img src={signature} alt="Tanda tangan direktur" data-testid="director-signature" />}</div><b><u>{company.director_name || "-"}</u></b><div>{company.director_position || "Direktur"}</div></div>
+      <div>{officers.map((officer, index) => <div key={officer.id || index} style={{breakInside: "avoid"}} data-testid="assignment-recipient"><div className="field-signature" /><b><u>{officer.name || "-"}</u></b><div>{officer.position || "Petugas"}</div></div>)}</div>
     </div>
     <div className="field-verification">
       {doc.is_finalized && <img src={qrSrc} alt="QR verifikasi surat tugas" data-testid="doc-qr" style={{ width: 50, height: 50 }} />}

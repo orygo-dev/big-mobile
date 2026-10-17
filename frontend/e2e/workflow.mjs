@@ -35,9 +35,10 @@ async function api(method,url,data,expected=200){const response=await direct.fet
 try {
   const admin=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:1000}});
   const officer=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844},geolocation:{latitude:-6.2,longitude:106.8},permissions:['geolocation']});
-  const ap=await admin.newPage(),op=await officer.newPage();const errors=[];ap.on('pageerror',error=>errors.push(error.message));op.on('pageerror',error=>errors.push(error.message));
+  const teammate=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844}});
+  const ap=await admin.newPage(),op=await officer.newPage(),tp=await teammate.newPage();const errors=[];ap.on('pageerror',error=>errors.push(error.message));op.on('pageerror',error=>errors.push(error.message));tp.on('pageerror',error=>errors.push(error.message));
   async function login(page,email,destination){await page.goto(origin+'/login');await page.getByTestId('login-email-input').fill(email);await page.getByTestId('login-password-input').fill(fixture.password);await page.getByTestId('login-submit-button').click();await page.waitForURL('**/'+destination);assert.equal(await page.evaluate(()=>localStorage.getItem('fc_token')),null);}
-  await login(ap,fixture.admin_email,'admin');await login(op,fixture.officer_email,'app');
+  await login(ap,fixture.admin_email,'admin');await login(op,fixture.officer_email,'app');await login(tp,fixture.teammate_email,'app');
   const cookie=(await admin.cookies()).find(item=>item.name==='fc_session');assert(cookie?.secure&&cookie?.httpOnly);
   await op.route('**/api/my/tugas',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'QA gangguan jaringan'})}));
   await op.goto(origin+'/app/tugas');await op.getByRole('alert').filter({hasText:'QA gangguan jaringan'}).waitFor();assert.equal(await op.getByText('Belum ada tugas',{exact:true}).count(),0);
@@ -48,9 +49,17 @@ try {
   const pdf=await direct.post('surat-kuasa/'+sk.id+'/file',{headers:{Authorization:'Bearer '+fixture.admin_token},multipart:{file:{name:'authority.pdf',mimeType:'application/pdf',buffer:fs.readFileSync(fixture.pdf)}}});assert.equal(pdf.status(),200);
   const unit=await api('POST','akun',{nomor_kontrak:suffix,nama_debitur:'Browser Debitur '+suffix,client_id:client.id,surat_kuasa_id:sk.id});
   await ap.goto(origin+'/admin/penugasan');await ap.getByTestId('penugasan-create-button').click();await ap.getByTestId('penugasan-unit-select').click();await ap.getByRole('option').filter({hasText:unit.nama_debitur}).click();await ap.getByTestId('penugasan-petugas-select').click();await ap.getByRole('option').filter({hasText:'QA officer'}).click();
+  await ap.getByTestId('penugasan-petugas-select').click();await ap.getByRole('option').filter({hasText:'QA other'}).click();
+  assert.equal(await ap.getByTestId('penugasan-selected-officers').getByRole('button',{name:/Hapus/}).count(),2);
+  await ap.screenshot({path:path.join(path.dirname(fixture.print_pdf),'team-assignment-form.png'),fullPage:true});
   let pending=ap.waitForResponse(response=>response.url().endsWith('/api/penugasan')&&response.request().method()==='POST');await ap.getByTestId('penugasan-submit-button').click();const assigned=await pending;assert.equal(assigned.status(),200);const letter=await assigned.json();
+  assert.equal(letter.petugas_count,2);await ap.getByRole('button',{name:'Tutup',exact:true}).click();
+  await ap.getByTestId('penugasan-officer-count-'+letter.id).waitFor();assert.equal(await ap.getByTestId('penugasan-officer-count-'+letter.id).innerText(),'2 Petugas');
+  await tp.goto(origin+'/app/tugas/'+unit.id);await tp.getByTestId('detail-tugas-surat-penugasan').click();
+  await tp.getByTestId('doc-page-1').waitFor();assert.equal(await tp.locator('.field-officer tbody tr').count(),2);assert.equal(await tp.getByTestId('assignment-recipient').count(),2);assert.equal(await tp.getByTestId('doc-cancel-button').count(),0);
+  await tp.screenshot({path:path.join(path.dirname(fixture.print_pdf),'team-assignment-letter.png'),fullPage:true});
   await op.goto(origin+'/app/tugas/'+unit.id);const authority=op.getByTestId('detail-tugas-surat-kuasa');await authority.waitFor();assert.equal((await officer.request.get(origin+await authority.getAttribute('href'))).status(),200);
-  for(const [page,base] of [[ap,'/admin'],[op,'/app']]) {
+  for(const [page,base] of [[ap,'/admin'],[op,'/app'],[tp,'/app']]) {
     await page.goto(origin+base+'/chat');await page.getByTestId('chat-new-message').click();
     await page.getByTestId('chat-start-'+letter.assignment_id).waitFor();
     await page.screenshot({path:path.join(path.dirname(fixture.print_pdf),base==='/admin'?'chat-new-admin.png':'chat-new-officer.png'),fullPage:true});
@@ -74,6 +83,8 @@ try {
   const chatFile=await ap.getByTestId('chat-attachment-document').getAttribute('href');assert.equal((await admin.request.get(origin+chatFile)).status(),200);
   await ap.getByTestId('chat-text').fill('Arahan admin melalui chat');pending=ap.waitForResponse(response=>response.url().endsWith('/messages')&&response.request().method()==='POST');await ap.getByTestId('chat-send').click();assert.equal((await pending).status(),200);
   await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
+  await tp.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
+  await tp.getByTestId('chat-text').fill('Koordinasi anggota kedua');pending=tp.waitForResponse(response=>response.url().endsWith('/messages')&&response.request().method()==='POST');await tp.getByTestId('chat-send').click();assert.equal((await pending).status(),200);await op.getByText('Koordinasi anggota kedua',{exact:true}).waitFor();
   await ap.screenshot({path:path.join(path.dirname(fixture.print_pdf),'chat-admin.png'),fullPage:true});
   await op.screenshot({path:path.join(path.dirname(fixture.print_pdf),'chat-officer.png'),fullPage:true});
   const chatReadURL=url=>url.pathname===`/api/chat/${letter.assignment_id}`;
@@ -87,6 +98,7 @@ try {
   const reports=await api('GET','laporan');const report=reports.find(item=>item.account_id===unit.id);assert(report);
   await ap.goto(origin+'/admin/laporan/'+report.id);await ap.getByTestId('laporan-photo-0').locator('img').evaluate(image=>image.decode());await ap.getByTestId('laporan-review-input').fill('Review browser QA');pending=ap.waitForResponse(response=>response.url().endsWith('/review')&&response.request().method()==='PATCH');await ap.getByTestId('laporan-review-save').click();assert.equal((await pending).status(),200);
   await op.goto(origin+'/app/riwayat');await op.getByText('Review browser QA').waitFor();await op.locator('img[src*="/api/files/"]').first().evaluate(image=>image.decode());
+  await tp.goto(origin+'/app/riwayat');await tp.getByText('Review browser QA').waitFor();await tp.locator('img[src*="/api/files/"]').first().evaluate(image=>image.decode());
   await api('PATCH','surat-tugas/'+letter.id+'/status',{status:'selesai'});
   await op.goto(origin+'/app/chat/'+letter.assignment_id);await op.getByTestId('chat-read-only').waitFor();assert.equal(await op.getByTestId('chat-composer').count(),0);await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
   const settings={...await api('GET','company'),nama:'PT Reborn Browser QA',alamat:'Jl. Kantor Browser QA 12',email:'office@browser-qa.example.com',telepon:'021-987654'};

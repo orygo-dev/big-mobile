@@ -60,6 +60,9 @@ export default function App() {
           <Route path="/admin/surat-tugas/:id/dokumen" element={
             <ProtectedRoute role="admin"><SuratPenugasanDoc /></ProtectedRoute>
           } />
+          <Route path="/app/surat-tugas/:id/dokumen" element={
+            <ProtectedRoute role="petugas"><SuratPenugasanDoc /></ProtectedRoute>
+          } />
 
           {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute role="admin"><AdminLayout /></ProtectedRoute>}>

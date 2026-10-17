@@ -10,7 +10,8 @@ load_dotenv(ROOT_DIR / '.env')
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Form, File, UploadFile, Query, Header
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 from starlette.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, model_validator
+from assignment_team import member_ids, member_query
 from typing import List, Literal, Optional
 from datetime import date, datetime, timezone, timedelta
 import logging
@@ -413,11 +414,25 @@ class CompanyInput(BusinessInput):
     app_name: Optional[str] = "FieldCollector"
 
 class PenugasanInput(BusinessInput):
-    petugas_id: str
+    petugas_id: Optional[str] = None
+    petugas_ids: List[str] = Field(default_factory=list, max_length=50)
     account_id: str
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     catatan: Optional[str] = ""
+
+    @model_validator(mode="after")
+    def validate_team(self):
+        ids = self.petugas_ids or ([self.petugas_id] if self.petugas_id else [])
+        if not ids or any(not identity.strip() for identity in ids):
+            raise ValueError("Pilih minimal satu petugas")
+        if len(set(ids)) != len(ids):
+            raise ValueError("Petugas tidak boleh dipilih lebih dari sekali")
+        if self.petugas_id and self.petugas_id != ids[0]:
+            raise ValueError("Petugas utama harus sesuai urutan pertama")
+        self.petugas_ids = ids
+        self.petugas_id = ids[0]
+        return self
 
 class LoginBackgroundInput(BaseModel):
     preset: Literal["aurora", "blueprint", "sunrise", "image"] = "aurora"
@@ -607,7 +622,7 @@ async def delete_account(record_id: str, request: Request, user: dict = Depends(
 @transactional
 async def delete_petugas(record_id: str, request: Request, user: dict = Depends(admin_required)):
     return await delete_unused_record("users", record_id, user, request, "Petugas", [
-        ("assignments", "officer_id"), ("assignment_letters", "petugas_id"), ("field_reports", "petugas_id")], {"role": "petugas"})
+        ("assignments", "officer_id"), ("assignments", "officer_ids"), ("assignment_letters", "petugas_id"), ("assignment_letters", "petugas_ids"), ("field_reports", "petugas_id")], {"role": "petugas"})
 
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(admin_required), search: Optional[str] = None, response: Response = None, page: int = Query(1, ge=1), limit: int = Query(500, ge=1, le=1000)):
@@ -835,7 +850,7 @@ async def list_petugas(user: dict = Depends(admin_required), response: Response 
     for item in items:
         item.pop("password_hash", None)
     for p in items:
-        p["total_tugas"] = await db.assignment_letters.count_documents({"petugas_id": p["id"], "status": "aktif"})
+        p["total_tugas"] = await db.assignment_letters.count_documents(member_query({"company_id": user["company_id"], "status": "aktif"}, p["id"], "petugas_id"))
     return items
 
 @api_router.post("/petugas")
@@ -905,6 +920,15 @@ async def enrich_letter(letter: dict) -> dict:
     sk = await db.power_of_attorneys.find_one({"id": letter.get("surat_kuasa_id"), "company_id": letter["company_id"]}, {"_id": 0})
     letter["petugas_name"] = petugas["name"] if petugas else "-"
     letter["petugas_code"] = petugas["petugas_code"] if petugas else "-"
+    team = [petugas] if petugas else []
+    for identity in member_ids(letter, "petugas_id")[1:]:
+        person = await db.users.find_one({"id": identity, "company_id": letter["company_id"]}, {"_id": 0, "password_hash": 0})
+        if person:
+            team.append(person)
+    letter["petugas_ids"] = member_ids(letter, "petugas_id")
+    letter["petugas_count"] = len(letter["petugas_ids"])
+    letter["petugas"] = [{"id": p["id"], "name": p["name"], "petugas_code": p.get("petugas_code", "-")} for p in team]
+    letter["petugas_name"] = ", ".join(p["name"] for p in team) or "-"
     letter["client_name"] = client_doc["nama_perusahaan"] if client_doc else "-"
     letter["surat_kuasa_nomor"] = sk["nomor"] if sk else "-"
     accs = await db.accounts.find({"id": {"$in": letter.get("account_ids", [])}, "company_id": letter["company_id"]}, {"_id": 0}).to_list(1000)
@@ -918,12 +942,13 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
     _, end = validate_assignment_dates(data.valid_from or today.isoformat(), data.valid_until)
     if end and end < today:
         raise HTTPException(status_code=400, detail="Tanggal penugasan sudah berakhir")
-    # 1 Assignment = 1 Unit = 1 Officer = 1 Assignment Letter
-    petugas = await db.users.find_one({"id": data.petugas_id, "company_id": user["company_id"], "role": "petugas"})
-    if not petugas:
-        raise HTTPException(status_code=404, detail="Petugas tidak ditemukan")
-    if petugas.get("status") != "aktif":
-        raise HTTPException(status_code=400, detail="Petugas tidak aktif")
+    # One unit and one letter, with one or more assigned officers.
+    for identity in data.petugas_ids:
+        petugas = await db.users.find_one({"id": identity, "company_id": user["company_id"], "role": "petugas"})
+        if not petugas:
+            raise HTTPException(status_code=404, detail="Petugas tidak ditemukan")
+        if petugas.get("status") != "aktif":
+            raise HTTPException(status_code=400, detail="Petugas tidak aktif")
     acc = await db.accounts.find_one({"id": data.account_id, "company_id": user["company_id"]}, {"_id": 0})
     if not acc:
         raise HTTPException(status_code=404, detail="Unit/akun tidak ditemukan")
@@ -950,8 +975,12 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
         raise HTTPException(status_code=400, detail="Klien tidak aktif, tidak dapat membuat penugasan")
     client_id = acc["client_id"]
     if transactions.session_context.get() is not None:
-        for collection, identity in ((db.clients, client_id), (db.power_of_attorneys, sk_id), (db.users, data.petugas_id)):
+        for collection, identity in ((db.clients, client_id), (db.power_of_attorneys, sk_id)):
             await collection.update_one({"id": identity, "company_id": user["company_id"]}, {"$inc": {"relation_version": 1}})
+        for identity in sorted(data.petugas_ids):
+            changed = await db.users.update_one({"id": identity, "company_id": user["company_id"], "role": "petugas", "status": "aktif"}, {"$inc": {"relation_version": 1}})
+            if not changed.matched_count:
+                raise HTTPException(status_code=400, detail="Petugas sudah berubah atau tidak aktif. Pilih ulang petugas.")
 
     now = datetime.now(timezone.utc)
     year = now.year
@@ -983,6 +1012,7 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
         "id": assignment_id, "company_id": user["company_id"],
         "active_key": f"{user['company_id']}:{data.account_id}",
         "account_id": data.account_id, "officer_id": data.petugas_id,
+        "officer_ids": data.petugas_ids,
         "power_of_attorney_id": sk_id, "client_id": client_id,
         "status": ASSIGNMENT_ACTIVE,
         "valid_from": valid_from, "valid_until": valid_until,
@@ -998,6 +1028,7 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
         "document_number": document_number, "generate_code": generate_code,
         "register_number": register_number, "issue_date": now.date().isoformat(),
         "petugas_id": data.petugas_id, "client_id": client_id, "surat_kuasa_id": sk_id,
+        "petugas_ids": data.petugas_ids,
         "account_id": data.account_id, "account_ids": [data.account_id],
         "tanggal": valid_from, "masa_berlaku": valid_until, "catatan": data.catatan or "",
         "status": "aktif", "document_status": "ACTIVE", "template_version": "v1",
@@ -1034,7 +1065,7 @@ async def list_surat_tugas(user: dict = Depends(admin_required), search: Optiona
     if search:
         q["nomor"] = {"$regex": re.escape(search), "$options": "i"}
     if petugas_id:
-        q["petugas_id"] = petugas_id
+        q = member_query(q, petugas_id, "petugas_id")
     if status:
         q["status"] = status
     items = await paged_documents(db.assignment_letters, q, response, page, limit)
@@ -1097,6 +1128,16 @@ async def surat_tugas_qr(lid: str):
 # ---------------------------------------------------------------------------
 # Public verification
 # ---------------------------------------------------------------------------
+async def public_team_names(letter):
+    snapshot = letter.get("document_snapshot") or letter.get("snapshot_data") or {}
+    if snapshot.get("officers"):
+        return [person.get("name", "-") for person in snapshot["officers"]]
+    names = []
+    for identity in member_ids(letter, "petugas_id"):
+        person = await db.users.find_one({"id": identity, "company_id": letter["company_id"]}, {"name": 1}) or {}
+        names.append(person.get("name", "-"))
+    return names
+
 @api_router.get("/public/surat-tugas/{lid}")
 async def public_verify(lid: str):
     letter = await db.assignment_letters.find_one({"id": lid}, {"_id": 0})
@@ -1105,10 +1146,12 @@ async def public_verify(lid: str):
     petugas = await db.users.find_one({"id": letter["petugas_id"]}, {"_id": 0, "password_hash": 0})
     company = await db.companies.find_one({"id": letter["company_id"]}, {"_id": 0})
     valid = letter["status"] == "aktif" and not letter_is_expired(letter)
+    names = await public_team_names(letter)
     return {
         "valid": valid,
         "nomor": letter["nomor"],
-        "petugas_name": petugas["name"] if petugas else "-",
+        "petugas_name": ", ".join(names),
+        "petugas_names": names,
         "company_name": company["nama"] if company else "-",
         "tanggal_berlaku": letter.get("masa_berlaku") or letter.get("tanggal"),
         "status": "kedaluwarsa" if letter["status"] == "aktif" and letter_is_expired(letter) else letter["status"],
@@ -1140,6 +1183,13 @@ def _date_only(iso):
 async def build_document_data(letter: dict, generated_by_name: str = "") -> dict:
     company = await db.companies.find_one({"id": letter["company_id"]}, {"_id": 0}) or {}
     officer = await db.users.find_one({"id": letter["petugas_id"], "company_id": letter["company_id"]}, {"_id": 0, "password_hash": 0}) or {}
+    team = [officer]
+    for identity in member_ids(letter, "petugas_id")[1:]:
+        team.append(await db.users.find_one({"id": identity, "company_id": letter["company_id"]}, {"_id": 0, "password_hash": 0}) or {})
+    officers = [{"id": person.get("id", ""), "name": person.get("name", ""), "nik": person.get("nik", ""),
+                 "position": person.get("jabatan", "PROFCOLL"), "code": person.get("petugas_code", ""),
+                 "certification_number": person.get("no_sertifikasi", ""), "certification_valid_until": person.get("sertifikasi_valid_until", ""),
+                 "phone": person.get("telepon", "")} for person in team]
     client_doc = await db.clients.find_one({"id": letter.get("client_id"), "company_id": letter["company_id"]}, {"_id": 0}) or {}
     accs = await db.accounts.find({"id": {"$in": letter.get("account_ids", [])}, "company_id": letter["company_id"]}, {"_id": 0}).to_list(1000)
     acc_list = [{
@@ -1169,6 +1219,7 @@ async def build_document_data(letter: dict, generated_by_name: str = "") -> dict
             "director_signature": company.get("director_signature", ""),
         },
         "finance": {"name": client_doc.get("nama_perusahaan", "")},
+        "officers": officers,
         "officer": {
             "name": officer.get("name", ""), "nik": officer.get("nik", ""),
             "position": officer.get("jabatan", "PROFCOLL"), "code": officer.get("petugas_code", ""),
@@ -1280,12 +1331,14 @@ async def public_verify_code(code: str):
     if st == "aktif" and letter_is_expired(letter):
         st = "kedaluwarsa"
     status_map = {"aktif": "VALID", "selesai": "VALID", "dibatalkan": "DIBATALKAN", "kedaluwarsa": "KEDALUWARSA"}
+    names = await public_team_names(letter)
     return {
         "valid": st in ("aktif", "selesai"),
         "doc_status": status_map.get(st, "TIDAK VALID"),
         "nomor": letter.get("document_number") or letter.get("nomor"),
         "company_name": company.get("nama", ""),
-        "petugas_name": officer.get("name", ""),
+        "petugas_name": ", ".join(names),
+        "petugas_names": names,
         "issued_at": letter.get("generated_at"),
         "valid_until": _date_only(letter.get("masa_berlaku")),
         "generate_code": code,
@@ -1305,10 +1358,17 @@ async def update_company(data: CompanyInput, request: Request, user: dict = Depe
 # ---------------------------------------------------------------------------
 # Petugas (field officer) views
 # ---------------------------------------------------------------------------
+@api_router.get("/my/surat-tugas/{lid}/document")
+async def my_assignment_document(lid: str, user: dict = Depends(petugas_required)):
+    letter = await db.assignment_letters.find_one(member_query({"id": lid, "company_id": user["company_id"]}, user["id"], "petugas_id"), {"_id": 0})
+    if not letter:
+        raise HTTPException(status_code=404, detail="Surat tugas tidak ditemukan")
+    return await get_document_payload(letter)
+
 @api_router.get("/my/tugas")
 async def my_tugas(user: dict = Depends(petugas_required), response: Response = None, page: int = Query(1, ge=1), limit: int = Query(500, ge=1, le=1000)):
     # Officer tasks load from the ASSIGNMENTS collection (not the letters).
-    assignments = await paged_documents(db.assignments, {"officer_id": user["id"], "company_id": user["company_id"], "status": ASSIGNMENT_ACTIVE}, response, page, limit)
+    assignments = await paged_documents(db.assignments, member_query({"company_id": user["company_id"], "status": ASSIGNMENT_ACTIVE}, user["id"]), response, page, limit)
     result = []
     for a in assignments:
         acc = await db.accounts.find_one({"id": a["account_id"], "company_id": user["company_id"]}, {"_id": 0})
@@ -1337,7 +1397,7 @@ async def my_tugas(user: dict = Depends(petugas_required), response: Response = 
 @api_router.get("/my/tugas/{account_id}")
 async def my_tugas_detail(account_id: str, user: dict = Depends(petugas_required)):
     a = await db.assignments.find_one(
-        {"officer_id": user["id"], "company_id": user["company_id"], "account_id": account_id, "status": ASSIGNMENT_ACTIVE}, {"_id": 0})
+        member_query({"company_id": user["company_id"], "account_id": account_id, "status": ASSIGNMENT_ACTIVE}, user["id"]), {"_id": 0})
     if not a:
         raise HTTPException(status_code=404, detail="Tugas tidak ditemukan")
     acc = await db.accounts.find_one({"id": account_id, "company_id": user["company_id"]}, {"_id": 0})
@@ -1365,7 +1425,7 @@ async def my_tugas_detail(account_id: str, user: dict = Depends(petugas_required
 
 @api_router.get("/my/riwayat")
 async def my_riwayat(user: dict = Depends(petugas_required), status: Optional[str] = None, assignment_id: Optional[str] = None, response: Response = None, page: int = Query(1, ge=1), limit: int = Query(500, ge=1, le=1000)):
-    q = {"petugas_id": user["id"], "company_id": user["company_id"]}
+    q = member_query({"company_id": user["company_id"]}, user["id"], "petugas_id")
     if status:
         q["status"] = status
     if assignment_id:
@@ -1417,11 +1477,11 @@ async def create_laporan(
     # Resolve the assignment (primary relation). Accept legacy assignment_letter_id for compatibility.
     assignment = None
     if assignment_id:
-        assignment = await db.assignments.find_one({"id": assignment_id, "officer_id": user["id"], "company_id": user["company_id"]})
+        assignment = await db.assignments.find_one(member_query({"id": assignment_id, "company_id": user["company_id"]}, user["id"]))
     if not assignment and assignment_letter_id:
-        letter_tmp = await db.assignment_letters.find_one({"id": assignment_letter_id, "petugas_id": user["id"], "company_id": user["company_id"]})
+        letter_tmp = await db.assignment_letters.find_one(member_query({"id": assignment_letter_id, "company_id": user["company_id"]}, user["id"], "petugas_id"))
         if letter_tmp and letter_tmp.get("assignment_id"):
-            assignment = await db.assignments.find_one({"id": letter_tmp["assignment_id"], "officer_id": user["id"], "company_id": user["company_id"]})
+            assignment = await db.assignments.find_one(member_query({"id": letter_tmp["assignment_id"], "company_id": user["company_id"]}, user["id"]))
     if not assignment:
         raise HTTPException(status_code=404, detail="Penugasan tidak ditemukan")
     if assignment.get("status") != ASSIGNMENT_ACTIVE:
@@ -1477,6 +1537,7 @@ async def create_laporan(
 
     report = {
         "id": report_id, "company_id": user["company_id"], "petugas_id": user["id"],
+        "petugas_ids": member_ids(assignment),
         "assignment_id": assignment["id"],
         "submission_key": assignment["id"],
         "assignment_letter_id": letter["id"] if letter else assignment_letter_id,
@@ -1492,7 +1553,7 @@ async def create_laporan(
     async def persist_report():
         # Claim the assignment inside the transaction so cancellation/reporting
         # and officer deactivation cannot commit contradictory results.
-        live = await db.assignments.find_one({"id": assignment["id"], "company_id": user["company_id"], "officer_id": user["id"], "status": ASSIGNMENT_ACTIVE})
+        live = await db.assignments.find_one(member_query({"id": assignment["id"], "company_id": user["company_id"], "status": ASSIGNMENT_ACTIVE}, user["id"]))
         if not live or live.get("status") != ASSIGNMENT_ACTIVE:
             raise HTTPException(status_code=409, detail="Penugasan telah berubah. Muat ulang tugas sebelum melapor.")
         if transactions.session_context.get() is not None:
@@ -1539,7 +1600,7 @@ async def list_laporan(
 ):
     q = {"company_id": user["company_id"]}
     if petugas_id:
-        q["petugas_id"] = petugas_id
+        q = member_query(q, petugas_id, "petugas_id")
     if status:
         q["status"] = status
     if tanggal:
@@ -1786,13 +1847,13 @@ async def serve_file(path: str, user: dict = Depends(get_current_user)):
     if record:
         owner_query = {"id": record["report_id"], "company_id": user["company_id"]}
         if user.get("role") != "admin":
-            owner_query["petugas_id"] = user["id"]
+            owner_query = member_query(owner_query, user["id"], "petugas_id")
         owner = await db.field_reports.find_one(owner_query)
     else:
         record = await db.documents.find_one({"storage_path": path, "company_id": user["company_id"]})
         owner = record if user.get("role") == "admin" else None
         if record and user.get("role") == "petugas" and record.get("kind") == "surat_kuasa":
-            owner = await db.assignments.find_one({"company_id": user["company_id"], "officer_id": user["id"], "power_of_attorney_id": record.get("ref_id"), "status": ASSIGNMENT_ACTIVE})
+            owner = await db.assignments.find_one(member_query({"company_id": user["company_id"], "power_of_attorney_id": record.get("ref_id"), "status": ASSIGNMENT_ACTIVE}, user["id"]))
     if not record or not owner:
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
     try:
@@ -1854,6 +1915,7 @@ async def migrate_assignments_non_destructive():
         await db.assignments.insert_one({
             "id": new_asg_id, "company_id": letter["company_id"],
             "account_id": account_ids[0], "officer_id": letter.get("petugas_id"),
+            "officer_ids": member_ids(letter, "petugas_id"),
             "power_of_attorney_id": letter.get("surat_kuasa_id"), "client_id": letter.get("client_id"),
             "status": LETTER_TO_ASSIGNMENT_STATUS.get(letter.get("status", "aktif"), "AKTIF"),
             "valid_from": letter.get("tanggal"), "valid_until": letter.get("masa_berlaku"),

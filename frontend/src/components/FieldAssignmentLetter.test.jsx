@@ -15,6 +15,14 @@ const fixture = {
 };
 
 describe("field assignment letter", () => {
+  it("lists every assigned officer in both the identity table and signature area", () => {
+    const officers = [{id: 'first', name: 'Petugas Pertama', nik: 'NIK-SATU'}, {id: 'second', name: 'Petugas Kedua', nik: 'NIK-DUA'}];
+    const html = renderToStaticMarkup(<FieldAssignmentLetter doc={{...fixture, data: {...fixture.data, officers}}} />);
+    expect(html.match(/Petugas Pertama/g)).toHaveLength(2);
+    expect(html.match(/Petugas Kedua/g)).toHaveLength(2);
+    expect(html).toContain('NIK-SATU'); expect(html).toContain('NIK-DUA');
+    expect(html.match(/data-testid="assignment-recipient"/g)).toHaveLength(2);
+  });
   it("shows every contract and the configured validity instead of assuming seven days", () => {
     const html = renderToStaticMarkup(<FieldAssignmentLetter doc={fixture} />);
     for (const value of ["KONTRAK-1", "KONTRAK-2", "Debitur Satu", "Debitur Dua", "24 Oktober 2026", "SPPI-123", "KHUSUS", "Tembusan:"]) expect(html).toContain(value);

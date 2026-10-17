@@ -160,7 +160,7 @@ def test_photo_authorization(local_api, user, owner, expected):
         query = db.field_reports.find_one.call_args.args[0]
         assert query["company_id"] == "company-a"
         if user["role"] == "petugas":
-            assert query["petugas_id"] == "officer"
+            assert query["$and"] == [{"$or": [{"petugas_id": "officer"}, {"petugas_ids": "officer"}]}]
     if expected == 200:
         assert response.headers["cache-control"] == "private, no-store"
     else:

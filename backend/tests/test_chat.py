@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from test_local_regressions import local_api, ADMIN, OFFICER, bearer, server
 from chat import Location, safe_filename, validate_attachment
 from PIL import Image
+from assignment_team import member_query
 
 
 @pytest.mark.parametrize('point', [{'latitude': 91, 'longitude': 0}, {'latitude': 0, 'longitude': -181}, {'latitude': float('nan'), 'longitude': 0}, {'latitude': 0, 'longitude': 0, 'accuracy': -1}])
@@ -40,7 +41,7 @@ def test_chat_denies_foreign_or_unassigned_thread(local_api):
     for path in ['/api/chat/other-task', '/api/chat/other-task/attachments/photo']:
         assert api.get(path, headers=bearer(OFFICER)).status_code == 404
         query = db.assignments.find_one.call_args.args[0]
-        assert query['company_id'] == OFFICER['company_id'] and query['officer_id'] == OFFICER['id']
+        assert query == member_query({'id': 'other-task', 'company_id': OFFICER['company_id']}, OFFICER['id'])
     server.get_object.assert_not_called()
 
 
@@ -90,11 +91,11 @@ def test_chat_inbox_keeps_officer_scope(local_api):
     assert api.get('/api/chat', headers=bearer(OFFICER)).status_code == 200
     query = db.assignments.find.call_args.args[0]
     assert query['company_id'] == OFFICER['company_id']
-    assert query['officer_id'] == OFFICER['id']
+    assert query['$and'] == member_query({}, OFFICER['id'])['$and']
 
 
 def test_new_chat_choices_only_include_active_assignments(local_api):
     api, db = local_api
     db.users.find_one.return_value = OFFICER
     assert api.get('/api/chat?active_only=true', headers=bearer(OFFICER)).status_code == 200
-    assert db.assignments.find.call_args.args[0] == {'company_id': OFFICER['company_id'], 'officer_id': OFFICER['id'], 'status': 'AKTIF'}
+    assert db.assignments.find.call_args.args[0] == member_query({'company_id': OFFICER['company_id'], 'status': 'AKTIF'}, OFFICER['id'])
