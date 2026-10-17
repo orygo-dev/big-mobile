@@ -26,8 +26,9 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
       .field-letter .field-officer thead { border-block: 1px solid #999; }
       .field-letter .field-special { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-weight: 700; }
       .field-letter .field-special:before, .field-letter .field-special:after { content: ''; flex: 1; border-top: 1px dashed #444; }
-      .field-letter .field-clauses { padding-left: 20px; margin: 4px 0; }
-      .field-letter .field-clauses > li { padding-left: 3px; margin-bottom: 3px; text-align: justify; }
+      .field-letter .field-clauses { list-style: decimal outside; padding-left: 24px; margin: 4px 0; }
+      .field-letter .field-clauses > li { display: list-item; padding-left: 3px; margin-bottom: 3px; text-align: justify; }
+      .field-letter .field-clauses > li::marker { color: #111; font-weight: 600; font-variant-numeric: tabular-nums; }
       .field-letter .field-unit { margin: 4px 0; break-inside: avoid; }
       .field-letter .field-signers { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8%; text-align: center; break-inside: avoid; margin-top: 8px; }
       .field-letter .field-closing { break-inside: avoid; }
