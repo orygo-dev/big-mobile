@@ -436,3 +436,39 @@ def test_concurrent_team_payment_keeps_one_authoritative_proof(live):
     with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:pay(),range(2)))
     assert sorted(response.status_code for response in responses)==[200,409]
     assert live['db'].report_photos.count_documents({'report_id':report['id'],'kind':'payment'})==1
+
+
+def test_leasing_payment_concurrency_and_private_proof(live):
+    call=live['call'];db=live['db']
+    leasing=call('admin','POST','/clients',json={'nama_perusahaan':'Leasing pembayaran QA'}).json()
+    payload={'client_id':leasing['id'],'payment_amount':'1500000.25','payment_request_id':str(uuid.uuid4())}
+    files={'file':('payment.png',report_files()['photos'][1],'image/png')}
+    def send():
+        return requests.post(live['url']+'/leasing-payments',headers={'Authorization':'Bearer '+live['tokens']['admin']},data=payload,files=files,timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:send(),range(2)))
+    assert [r.status_code for r in responses]==[200,200], [r.text for r in responses]
+    first=responses[0].json()
+    assert first['id']==responses[1].json()['id'] and first['created_at']
+    assert first['payment_amount']=='1500000.25'
+    assert db.documents.count_documents({'kind':'leasing_payment','client_id':leasing['id']})==1
+    listed=call('admin','GET','/leasing-payments').json()['items']
+    assert any(item['id']==first['id'] for item in listed)
+    assert not call('foreign','GET','/leasing-payments').json()['items']
+    assert call('admin','GET',first['url'][4:]).content==files['file'][1]
+    for role in ('officer','foreign'):
+        call(role,'GET',first['url'][4:],404)
+    call('officer','GET','/leasing-payments',403)
+    call('foreign','POST','/leasing-payments',404,data=payload,files=files)
+    call('admin','POST','/leasing-payments',409,data={**payload,'payment_amount':'2'},files=files)
+    call('admin','DELETE',f"/clients/{leasing['id']}",409)
+
+
+def test_leasing_payment_audit_failure_rolls_back_record(live):
+    call=live['call'];db=live['db']
+    leasing=call('admin','POST','/clients',json={'nama_perusahaan':'Leasing rollback QA'}).json()
+    db.block_writes('audit_logs',True)
+    try:
+        call('admin','POST','/leasing-payments',500,data={'client_id':leasing['id'],'payment_amount':'100','payment_request_id':str(uuid.uuid4())},files={'file':('paid.png',report_files()['photos'][1],'image/png')})
+        assert db.documents.count_documents({'kind':'leasing_payment','client_id':leasing['id']})==0
+    finally:
+        db.block_writes('audit_logs',False)

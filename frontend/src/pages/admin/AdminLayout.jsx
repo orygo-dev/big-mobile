@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import {
   LayoutDashboard, Building2, FileText, Car, ClipboardList,
-  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X, Layers, MessageCircle,
+  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X, Layers, MessageCircle, Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -36,6 +36,7 @@ const NAV_GROUPS = [
       { to: "/admin/penugasan", label: "Penugasan", icon: ClipboardList, tid: "admin-sidebar-penugasan-link" },
       { to: "/admin/surat-tugas", label: "Surat Tugas", icon: FileCheck2, tid: "admin-sidebar-surat-tugas-link" },
       { to: "/admin/laporan", label: "Laporan Lapangan", icon: FileSearch, tid: "admin-sidebar-laporan-link" },
+      { to: "/admin/pembayaran-leasing", label: "Pembayaran Leasing", icon: Wallet, tid: "admin-sidebar-pembayaran-leasing-link" },
       { to: "/admin/chat", label: "Chat", icon: MessageCircle, tid: "admin-sidebar-chat-link" },
     ],
   },

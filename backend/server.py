@@ -601,7 +601,7 @@ async def delete_unused_record(collection_name, record_id, user, request, label,
 async def delete_client(record_id: str, request: Request, user: dict = Depends(admin_required)):
     return await delete_unused_record("clients", record_id, user, request, "Pemberi Kuasa", [
         ("power_of_attorneys", "client_id"), ("accounts", "client_id"),
-        ("assignments", "client_id"), ("assignment_letters", "client_id"), ("debtors", "client_id")])
+        ("assignments", "client_id"), ("assignment_letters", "client_id"), ("debtors", "client_id"), ("documents", "client_id")])
 
 
 @api_router.delete("/surat-kuasa/{record_id}")
@@ -1750,8 +1750,10 @@ async def serve_file(path: str, user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 import chat
 import admin_reports
+import leasing_payments
 import sys
 admin_reports.register(api_router, sys.modules[__name__])
+leasing_payments.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 
