@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import {
   LayoutDashboard, Building2, FileText, Car, ClipboardList,
-  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X, Layers, MessageCircle, Wallet, ChartNoAxesCombined, FileSignature,
+  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X, Layers, MessageCircle, Wallet, ChartNoAxesCombined, FileSignature, ScrollText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -47,6 +47,7 @@ const NAV_GROUPS = [
     section: "Pengaturan",
     items: [
       { to: "/admin/pengaturan", label: "Pengaturan", icon: Settings, tid: "admin-sidebar-pengaturan-link" },
+      { to: "/admin/audit-log", label: "Audit Log", icon: ScrollText, tid: "admin-sidebar-audit-log-link" },
     ],
   },
 ];

@@ -26,6 +26,7 @@ const PKS = lazy(() => import("@/pages/admin/PKS"));
 const PenggunaAdmin = lazy(() => import("@/pages/admin/PenggunaAdmin"));
 const LaporanDetail = lazy(() => import("@/pages/admin/LaporanDetail"));
 const Petugas = lazy(() => import("@/pages/admin/Petugas"));
+const AuditLog = lazy(() => import("@/pages/admin/AuditLog"));
 const Pengaturan = lazy(() => import("@/pages/admin/Pengaturan"));
 
 const PetugasLayout = lazy(() => import("@/pages/petugas/PetugasLayout"));
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="laporan/:id" element={<LaporanDetail />} />
             <Route path="petugas" element={<Petugas />} />
             <Route path="pengaturan" element={<Pengaturan />} />
+            <Route path="audit-log" element={<AuditLog />} />
             <Route path="chat" element={<ChatInbox />} />
             <Route path="chat/:assignmentId" element={<AssignmentChat />} />
           </Route>
