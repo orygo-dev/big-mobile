@@ -622,7 +622,7 @@ async def delete_account(record_id: str, request: Request, user: dict = Depends(
 @transactional
 async def delete_petugas(record_id: str, request: Request, user: dict = Depends(admin_required)):
     return await delete_unused_record("users", record_id, user, request, "Petugas", [
-        ("assignments", "officer_id"), ("assignments", "officer_ids"), ("assignment_letters", "petugas_id"), ("assignment_letters", "petugas_ids"), ("field_reports", "petugas_id")], {"role": "petugas"})
+        ("assignments", "officer_id"), ("assignments", "officer_ids"), ("assignment_letters", "petugas_id"), ("assignment_letters", "petugas_ids"), ("field_reports", "petugas_id"), ("documents", "officer_id")], {"role": "petugas"})
 
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(admin_required), search: Optional[str] = None, response: Response = None, page: int = Query(1, ge=1), limit: int = Query(500, ge=1, le=1000)):
@@ -1752,10 +1752,12 @@ import chat
 import admin_reports
 import leasing_payments
 import finance
+import pks
 import sys
 admin_reports.register(api_router, sys.modules[__name__])
 leasing_payments.register(api_router, sys.modules[__name__])
 finance.register(api_router, sys.modules[__name__])
+pks.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 
@@ -1851,6 +1853,7 @@ async def initialize_database():
     await db.field_reports.create_index([("company_id", 1), ("assignment_id", 1)])
     await db.report_photos.create_index("storage_path", unique=True)
     await db.documents.create_index([("company_id", 1), ("storage_path", 1)])
+    await db.documents.create_index([("company_id", 1), ("officer_id", 1), ("created_at", -1)])
     await db.accounts.create_index("company_id")
     await db.field_reports.create_index("petugas_id")
     # Sparse key protects new submissions without requiring destructive legacy cleanup.

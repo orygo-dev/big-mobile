@@ -510,3 +510,44 @@ def test_finance_union_totals_dates_pagination_and_exports(live):
     assert sheet.max_row==12 and Decimal(str(sheet['B6'].value))==Decimal('1250000.20')
     document=PdfReader(io.BytesIO(call('admin','GET','/finance/export/pdf'+query).content))
     assert '1.250.000,20' in document.pages[0].extract_text()
+
+
+def test_pks_dates_history_private_files_and_concurrent_retry(live):
+    from pypdf import PdfWriter
+    call=live['call'];db=live['db'];officer=live['users']['officer'];company=officer['company_id']
+    writer=PdfWriter();writer.add_blank_page(width=595,height=842);output=io.BytesIO();writer.write(output)
+    files={'file':('PKS.pdf',output.getvalue(),'application/pdf')}
+    before=call('admin','GET','/pks/officers?search=QA%20officer').json()['items']
+    assert len(before)==1 and before[0]['pks_status']=='BELUM_MEMILIKI'
+    preview=call('admin','GET','/pks/period?duration=3&unit=TAHUN').json()
+    payload={'officer_id':officer['id'],'duration':'3','unit':'TAHUN','submission_id':str(uuid.uuid4()),'start_date':'2000-01-01','end_date':'2099-12-31'}
+    def send():return requests.post(live['url']+'/pks',headers={'Authorization':'Bearer '+live['tokens']['admin']},data=payload,files=files,timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:send(),range(2)))
+    assert [r.status_code for r in responses]==[200,200],[r.text for r in responses]
+    record=responses[0].json()
+    assert record['id']==responses[1].json()['id']
+    assert record['start_date']==preview['start_date'] and record['end_date']==preview['end_date']
+    assert record['status']=='AKTIF' and db.documents.count_documents({'kind':'pks','officer_id':officer['id']})==1
+    assert call('admin','GET',record['url'][4:]).content==output.getvalue()
+    for role in ('officer','other','foreign'):
+        call(role,'GET',record['url'][4:],404)
+    call('officer','GET','/pks',403);call('officer','POST','/pks',403,data=payload,files=files)
+    call('foreign','POST','/pks',404,data=payload,files=files)
+    assert not call('foreign','GET','/pks').json()['items']
+    call('admin','POST','/pks',409,data={**payload,'duration':'2'},files=files)
+    renewed=call('admin','POST','/pks',data={**payload,'duration':'4','submission_id':str(uuid.uuid4())},files=files).json()
+    assert renewed['id']!=record['id'] and db.documents.count_documents({'kind':'pks','officer_id':officer['id']})==2
+    assert call('admin','GET',record['url'][4:]).content==output.getvalue()
+    after=call('admin','GET','/pks/officers?search=QA%20officer').json()['items'][0]
+    assert after['pks_status']=='AKTIF' and after['pks_end_date']==renewed['end_date']
+    day=datetime.now(timezone(timedelta(hours=7))).date()
+    for days,label in [(30,'MENDEKATI_EXPIRED'),(0,'MENDEKATI_EXPIRED'),(-1,'EXPIRED')]:
+        identity=uuid.uuid4().hex
+        db.documents.insert_one({'id':identity,'company_id':company,'kind':'pks','officer_id':live['users']['other']['id'],'officer_name':'Boundary PKS','start_date':(day-timedelta(days=365)).isoformat(),'end_date':(day+timedelta(days=days)).isoformat(),'created_at':datetime.now(timezone.utc).isoformat()})
+        listed=call('admin','GET','/pks?state='+label).json()['items']
+        assert any(row['id']==identity and row['status']==label for row in listed)
+    db.block_writes('audit_logs',True)
+    try:
+        call('admin','POST','/pks',500,data={**payload,'officer_id':live['users']['outsider']['id'],'submission_id':str(uuid.uuid4())},files=files)
+        assert db.documents.count_documents({'kind':'pks','officer_id':live['users']['outsider']['id']})==0
+    finally:db.block_writes('audit_logs',False)
