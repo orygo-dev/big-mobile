@@ -8,8 +8,12 @@ import {Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription} fro
 import {Loader2, Wallet} from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import {toast} from "sonner";
+import {useNavigate, useSearchParams} from "react-router-dom";
 
 export default function PembayaranLeasing() {
+  const navigate=useNavigate();
+  const [searchParams]=useSearchParams();
+  const fromFinance=searchParams.get('from')==='keuangan';
   const [items,setItems]=useState([]),[page,setPage]=useState(1),[next,setNext]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState("");
   const [open,setOpen]=useState(false),[clients,setClients]=useState([]),[clientPage,setClientPage]=useState(1),[moreClients,setMoreClients]=useState(false),[clientsLoading,setClientsLoading]=useState(false),[clientError,setClientError]=useState("");
   const [leasing,setLeasing]=useState(""),[amount,setAmount]=useState(""),[proof,setProof]=useState(null),[busy,setBusy]=useState(false),[formError,setFormError]=useState("");
@@ -28,6 +32,7 @@ export default function PembayaranLeasing() {
     }catch(e){setClientError(errMsg(e));}finally{setClientsLoading(false);}
   }
   function start(){setLeasing("");setAmount("");setProof(null);setFormError("");key.current=null;setOpen(true);loadClients();}
+  useEffect(()=>{if(fromFinance)start();},[fromFinance]);
   function edit(){key.current=null;setFormError("");}
   async function save(event){
     event.preventDefault();if(busy)return;
@@ -37,11 +42,12 @@ export default function PembayaranLeasing() {
     try {
       if(!key.current)key.current=crypto.randomUUID();
       const body=new FormData();body.append('client_id',leasing);body.append('payment_amount',amount);body.append('payment_request_id',key.current);body.append('file',proof);
-      await api.post('/leasing-payments',body);toast.success('Pembayaran leasing berhasil disimpan');setPage(1);setOpen(false);
+      await api.post('/leasing-payments',body);toast.success('Pembayaran leasing berhasil disimpan');setPage(1);setOpen(false);if(fromFinance)navigate('/admin/keuangan');
     }catch(e){setFormError(errMsg(e));}finally{setBusy(false);}
   }
   return <div className="space-y-5 animate-fade-in">
-    <div className="flex items-center justify-between gap-3 flex-wrap"><div><h1 className="font-heading text-2xl font-bold text-slate-900">Pembayaran Leasing</h1><p className="text-sm text-slate-500 mt-1">Catatan pembayaran kepada leasing beserta bukti pembayaran.</p></div><Button onClick={start} data-testid="leasing-payment-create">Pembayaran Baru</Button></div>
+    {fromFinance&&<Button variant="outline" onClick={()=>navigate('/admin/keuangan')}>Kembali ke Laporan Keuangan</Button>}
+    <div className="flex items-center justify-between gap-3 flex-wrap"><div><h1 className="font-heading text-2xl font-bold text-slate-900">Pembayaran Leasing</h1><p className="text-sm text-slate-500 mt-1">Penerimaan pembayaran dari leasing beserta bukti pembayaran.</p></div><Button onClick={start} data-testid="leasing-payment-create">Pembayaran Baru</Button></div>
     <div className="brand-panel rounded-2xl border border-slate-200 overflow-hidden">
       {loading?<div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-blue-600"/></div>:error?<div role="alert" className="p-5 space-y-3"><p>{error}</p><Button variant="outline" onClick={()=>{setRefresh(value=>value+1);}}>Coba lagi</Button></div>:!items.length?<EmptyState icon={Wallet} title="Belum ada pembayaran leasing" desc="Klik Pembayaran Baru untuk mencatat pembayaran dan mengunggah buktinya."/>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs text-slate-400 uppercase tracking-wider"><tr className="text-left"><th className="px-5 py-3 font-medium">Tanggal Dicatat</th><th className="px-5 py-3 font-medium">Leasing</th><th className="px-5 py-3 font-medium">Jumlah Pembayaran</th><th className="px-5 py-3 font-medium">Bukti Pembayaran</th></tr></thead><tbody>{items.map(row=><tr key={row.id} className="border-t border-slate-100" data-testid={`leasing-payment-row-${row.id}`}><td className="px-5 py-3 whitespace-nowrap">{formatDateTime(row.created_at)}</td><td className="px-5 py-3 font-medium">{row.leasing_name}</td><td className="px-5 py-3 whitespace-nowrap">{rupiah(row.payment_amount)}</td><td className="px-5 py-3"><a className="text-blue-600 font-semibold hover:underline" href={fileUrl(row.url)} target="_blank" rel="noopener noreferrer">Lihat Bukti</a></td></tr>)}</tbody></table></div>}
     </div>

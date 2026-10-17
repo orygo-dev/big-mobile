@@ -472,3 +472,41 @@ def test_leasing_payment_audit_failure_rolls_back_record(live):
         assert db.documents.count_documents({'kind':'leasing_payment','client_id':leasing['id']})==0
     finally:
         db.block_writes('audit_logs',False)
+
+
+def test_finance_union_totals_dates_pagination_and_exports(live):
+    from decimal import Decimal
+    from openpyxl import load_workbook
+    from pypdf import PdfReader
+    db=live['db'];call=live['call'];company=live['users']['admin']['company_id']
+    def income(nominal,stamp,tenant=company,kind='leasing_payment'):
+        db.documents.insert_one({'id':uuid.uuid4().hex,'company_id':tenant,'kind':kind,'leasing_name':'Leasing Finance QA','payment_amount':nominal,'created_at':stamp,'url':'/api/files/in.png'})
+    def expense(nominal,stamp,**extra):
+        db.field_reports.insert_one({'id':uuid.uuid4().hex,'company_id':company,'payment_status':'SELESAI','payment_amount':nominal,'payment_recorded_at':stamp,'created_at':'2020-01-01T00:00:00+00:00','team_names':['Satu','Dua'],'payment_proof':{'url':'/api/files/out.png'},**extra})
+    income('1000000.25','2035-01-01T17:00:00+00:00')
+    income('500000.10','2035-01-02T16:59:59+00:00')
+    expense('250000.15','2035-01-02T03:00:00+00:00')
+    income('999','2035-01-02T17:00:00+00:00') # Following WIB day, excluded.
+    income('999','2035-01-01T16:59:59+00:00') # Previous WIB day, excluded.
+    income('999','2035-01-02T10:00:00+00:00',tenant='foreign-company')
+    income('999','2035-01-02T10:00:00+00:00',kind='surat_kuasa')
+    expense('999','2035-01-02T10:00:00+00:00',payment_status='MENUNGGU_PEMBAYARAN')
+    expense('999','2035-01-02T10:00:00+00:00',payment_proof=None)
+    query='?start=2035-01-02&end=2035-01-02'
+    report=call('admin','GET','/finance'+query+'&limit=1').json()
+    assert report['total']==3 and len(report['items'])==1 and report['next_page']==2
+    assert report['summary']=={'income':'1500000.35','expense':'250000.15','balance':'1250000.20'}
+    page2=call('admin','GET','/finance'+query+'&limit=1&page=2').json()
+    assert page2['items'][0]['id']!=report['items'][0]['id'] and page2['summary']==report['summary']
+    outgoing=call('admin','GET','/finance'+query+'&kind=PENGELUARAN').json()
+    assert outgoing['total']==1 and outgoing['items'][0]['party']=='Satu, Dua'
+    assert outgoing['summary']['balance']=='-250000.15'
+    for role in ('officer','outsider'):
+        call(role,'GET','/finance'+query,403)
+        call(role,'GET','/finance/export/xlsx'+query,403)
+    foreign=call('foreign','GET','/finance'+query).json()
+    assert foreign['total']==1 and foreign['summary']['income']=='999.00'
+    sheet=load_workbook(io.BytesIO(call('admin','GET','/finance/export/xlsx'+query).content)).active
+    assert sheet.max_row==12 and Decimal(str(sheet['B6'].value))==Decimal('1250000.20')
+    document=PdfReader(io.BytesIO(call('admin','GET','/finance/export/pdf'+query).content))
+    assert '1.250.000,20' in document.pages[0].extract_text()

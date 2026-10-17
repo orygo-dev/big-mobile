@@ -21,6 +21,7 @@ const SuratTugasPrint = lazy(() => import("@/pages/admin/SuratTugasPrint"));
 const SuratPenugasanDoc = lazy(() => import("@/pages/admin/SuratPenugasanDoc"));
 const LaporanPetugas = lazy(() => import("@/pages/admin/LaporanPetugas"));
 const PembayaranLeasing = lazy(() => import("@/pages/admin/PembayaranLeasing"));
+const LaporanKeuangan = lazy(() => import("@/pages/admin/LaporanKeuangan"));
 const LaporanDetail = lazy(() => import("@/pages/admin/LaporanDetail"));
 const Petugas = lazy(() => import("@/pages/admin/Petugas"));
 const Pengaturan = lazy(() => import("@/pages/admin/Pengaturan"));
@@ -75,6 +76,7 @@ export default function App() {
             <Route path="surat-tugas" element={<SuratTugas />} />
             <Route path="laporan" element={<LaporanPetugas />} />
             <Route path="pembayaran-leasing" element={<PembayaranLeasing />} />
+            <Route path="keuangan" element={<LaporanKeuangan />} />
             <Route path="laporan/:id" element={<LaporanDetail />} />
             <Route path="petugas" element={<Petugas />} />
             <Route path="pengaturan" element={<Pengaturan />} />

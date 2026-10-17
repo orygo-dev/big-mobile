@@ -280,5 +280,27 @@ class Database:
         sql=f'SELECT a.payload FROM bm_assignments a LEFT JOIN bm_field_reports r ON r.g_assignment_id=a.g_id AND r.g_company_id=a.g_company_id WHERE {where} AND r._pk IS NULL ORDER BY a.g_created_at DESC,a.g_id ASC LIMIT %s OFFSET %s'
         rows=await self.execute(sql,[*params,limit+1,(page-1)*limit],fetch=True)
         return [json.loads(row[0]) for row in rows]
+    async def finance_report(self,company_id,start,end,kind,page,limit,export=False):
+        """One consistent, tenant-scoped read; totals cover the whole filter, not one page."""
+        sources=[];parameters=[]
+        for source,table,date_field,condition in (
+            ('PEMASUKAN','bm_documents','g_created_at',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.kind'))='leasing_payment'"),
+            ('PENGELUARAN','bm_field_reports',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_recorded_at'))","JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_status'))='SELESAI' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_proof.url')) LIKE '/api/files/%'")
+        ):
+            if kind and kind!=source:continue
+            where=f'g_company_id=%s AND {condition} AND {date_field} IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(payload,\'$.payment_amount\')) IS NOT NULL'
+            values=[company_id]
+            if start:where+=f' AND {date_field}>=%s';values.append(start)
+            if end:where+=f' AND {date_field}<%s';values.append(end)
+            sources.append(f"SELECT g_id AS id, {date_field} AS occurred_at, '{source}' AS direction, CAST(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_amount')) AS DECIMAL(20,2)) AS amount, payload FROM {table} WHERE {where}")
+            parameters.extend(values)
+        union=' UNION ALL '.join(sources)
+        async def read():
+            totals=await self.execute(f'SELECT direction,COUNT(*),SUM(amount) FROM ({union}) entries GROUP BY direction',parameters,fetch=True)
+            count=sum(row[1] for row in totals)
+            if export and count>10000:raise ValueError('EXPORT_LIMIT')
+            rows=await self.execute(f'SELECT id,occurred_at,direction,amount,payload FROM ({union}) entries ORDER BY occurred_at DESC,direction,id LIMIT %s OFFSET %s',[*parameters,10000 if export else limit,0 if export else (page-1)*limit],fetch=True)
+            return {'rows':[(row[0],row[1],row[2],row[3],json.loads(row[4])) for row in rows], 'totals':{row[0]:row[2] for row in totals},'count':count}
+        return await self.run_transaction(read)
     async def close(self):
         if self.pool:self.pool.close();await self.pool.wait_closed();self.pool=None;await asyncio.sleep(0)

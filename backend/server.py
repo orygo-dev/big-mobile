@@ -1751,9 +1751,11 @@ async def serve_file(path: str, user: dict = Depends(get_current_user)):
 import chat
 import admin_reports
 import leasing_payments
+import finance
 import sys
 admin_reports.register(api_router, sys.modules[__name__])
 leasing_payments.register(api_router, sys.modules[__name__])
+finance.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 
