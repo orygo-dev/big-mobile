@@ -1424,12 +1424,14 @@ async def my_tugas_detail(account_id: str, user: dict = Depends(petugas_required
     }
 
 @api_router.get("/my/riwayat")
-async def my_riwayat(user: dict = Depends(petugas_required), status: Optional[str] = None, assignment_id: Optional[str] = None, response: Response = None, page: int = Query(1, ge=1), limit: int = Query(500, ge=1, le=1000)):
+async def my_riwayat(user: dict = Depends(petugas_required), status: Optional[str] = None, assignment_id: Optional[str] = None, payment_status: Optional[Literal["MENUNGGU_PEMBAYARAN", "SELESAI", "BELUM_DICATAT"]] = None, response: Response = None, page: int = Query(1, ge=1), limit: int = Query(500, ge=1, le=1000)):
     q = member_query({"company_id": user["company_id"]}, user["id"], "petugas_id")
     if status:
         q["status"] = status
     if assignment_id:
         q["assignment_id"] = assignment_id
+    if payment_status:
+        q["payment_status"] = {"$exists": False} if payment_status == "BELUM_DICATAT" else payment_status
     reports = await paged_documents(db.field_reports, q, response, page, limit)
     for r in reports:
         acc = r.get("account_snapshot") or await db.accounts.find_one({"id": r["account_id"], "company_id": user["company_id"]}, {"_id": 0})
@@ -1441,7 +1443,7 @@ async def my_riwayat(user: dict = Depends(petugas_required), status: Optional[st
         r["nama_debitur"] = acc["nama_debitur"] if acc else "-"
         r["nomor_polisi"] = acc["nomor_polisi"] if acc else "-"
         r["letter_nomor"] = (letter.get("document_number") or letter.get("nomor")) if letter else "-"
-        r["photos"] = await db.report_photos.find({"report_id": r["id"]}, {"_id": 0}).to_list(10)
+        r["photos"] = await db.report_photos.find({"report_id": r["id"], "kind": {"$ne": "payment"}}, {"_id": 0}).to_list(10)
     return reports
 
 @api_router.get("/my/profile")
@@ -1460,145 +1462,20 @@ ACCOUNT_STATUS_MAP = {
     "LAINNYA": "DALAM_PROSES",
 }
 
-@api_router.post("/laporan")
-async def create_laporan(
-    request: Request,
-    account_id: str = Form(...),
-    status: str = Form(...),
-    catatan: str = Form(...),
-    assignment_id: Optional[str] = Form(None),
-    assignment_letter_id: Optional[str] = Form(None),
-    latitude: Optional[str] = Form(None),
-    longitude: Optional[str] = Form(None),
-    lokasi_alasan: Optional[str] = Form(None),
-    photos: List[UploadFile] = File(default=[]),
-    user: dict = Depends(petugas_required),
-):
-    # Resolve the assignment (primary relation). Accept legacy assignment_letter_id for compatibility.
-    assignment = None
-    if assignment_id:
-        assignment = await db.assignments.find_one(member_query({"id": assignment_id, "company_id": user["company_id"]}, user["id"]))
-    if not assignment and assignment_letter_id:
-        letter_tmp = await db.assignment_letters.find_one(member_query({"id": assignment_letter_id, "company_id": user["company_id"]}, user["id"], "petugas_id"))
-        if letter_tmp and letter_tmp.get("assignment_id"):
-            assignment = await db.assignments.find_one(member_query({"id": letter_tmp["assignment_id"], "company_id": user["company_id"]}, user["id"]))
-    if not assignment:
-        raise HTTPException(status_code=404, detail="Penugasan tidak ditemukan")
-    if assignment.get("status") != ASSIGNMENT_ACTIVE:
-        raise HTTPException(status_code=400, detail="Penugasan tidak aktif")
-    start, end = validate_assignment_dates(assignment.get("valid_from"), assignment.get("valid_until"))
-    today = datetime.now(timezone(timedelta(hours=7))).date()
-    if (start and start > today) or (end and end < today):
-        raise HTTPException(status_code=400, detail="Penugasan di luar masa berlaku")
-    if assignment.get("account_id") != account_id:
-        raise HTTPException(status_code=403, detail="Akun ini bukan bagian dari tugas Anda")
-    if assignment.get("power_of_attorney_id"):
-        authority = await db.power_of_attorneys.find_one({"id": assignment["power_of_attorney_id"], "company_id": user["company_id"]})
-        if not authority:
-            raise HTTPException(status_code=400, detail="Surat Kuasa tidak ditemukan")
-        client_doc = await db.clients.find_one({"id": assignment.get("client_id"), "company_id": user["company_id"]})
-        availability = task_availability(assignment, authority, client_doc)
-        if not availability["can_report"]:
-            raise HTTPException(status_code=400, detail=availability["blocked_reason"])
-    letter = await db.assignment_letters.find_one({"assignment_id": assignment["id"]}, {"_id": 0})
-    existing = await db.field_reports.find_one({"assignment_id": assignment["id"]})
-    if existing:
-        raise HTTPException(status_code=400, detail="Laporan untuk tugas ini sudah dikirim")
-    if len(catatan.strip()) < 10:
-        raise HTTPException(status_code=400, detail="Catatan petugas wajib minimal 10 karakter")
-    if len(catatan) > 4000:
-        raise HTTPException(status_code=400, detail="Catatan petugas maksimal 4000 karakter")
-    if status not in ACCOUNT_STATUS_MAP:
-        raise HTTPException(status_code=400, detail="Status hasil kunjungan tidak valid")
-    lat, lng = validate_report_location(latitude, longitude, lokasi_alasan)
-    photos = [p for p in photos if p and p.filename]
-    if status == "UNIT_DITEMUKAN" and len(photos) < 1:
-        raise HTTPException(status_code=400, detail="Foto bukti wajib minimal 1 untuk unit ditemukan")
-    if len(photos) > 5:
-        raise HTTPException(status_code=400, detail="Maksimal 5 foto")
-
-    report_id = new_id()
-    saved = []
-    validated_photos = []
-    for p in photos:
-        if p.content_type not in ALLOWED_IMAGE_TYPES:
-            raise HTTPException(status_code=400, detail="Format foto tidak diizinkan (hanya JPG/PNG/WEBP)")
-        content = await p.read(MAX_FILE_SIZE + 1)
-        if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(status_code=400, detail="Ukuran foto maksimal 8MB")
-        actual_format = await run_in_threadpool(verified_image_format, content, {"JPEG", "PNG", "WEBP"}, 20_000_000)
-        ext = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}[actual_format]
-        validated_photos.append((content, ext, {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[ext]))
-    for content, ext, content_type in validated_photos:
-        obj_path = f"{APP_NAME}/companies/{user['company_id']}/reports/{report_id}/{new_id()}.{ext}"
-        await db.upload_intents.insert_one({"id": obj_path, "storage_path": obj_path, "company_id": user["company_id"], "created_at": datetime.now(timezone.utc)})
-        result = await run_in_threadpool(put_object, obj_path, content, content_type)
-        saved.append({"storage_path": result["path"], "url": f"/api/files/{result['path']}"})
-
-    report = {
-        "id": report_id, "company_id": user["company_id"], "petugas_id": user["id"],
-        "petugas_ids": member_ids(assignment),
-        "assignment_id": assignment["id"],
-        "submission_key": assignment["id"],
-        "assignment_letter_id": letter["id"] if letter else assignment_letter_id,
-        "account_id": account_id,
-        "status": status, "catatan": catatan,
-        "latitude": lat,
-        "longitude": lng,
-        "lokasi_alasan": lokasi_alasan or "",
-        "report_status": "SUBMITTED",
-        "catatan_admin": "", "reviewed": False,
-        "created_at": now_iso(), "updated_at": now_iso(),
-    }
-    async def persist_report():
-        # Claim the assignment inside the transaction so cancellation/reporting
-        # and officer deactivation cannot commit contradictory results.
-        live = await db.assignments.find_one(member_query({"id": assignment["id"], "company_id": user["company_id"], "status": ASSIGNMENT_ACTIVE}, user["id"]))
-        if not live or live.get("status") != ASSIGNMENT_ACTIVE:
-            raise HTTPException(status_code=409, detail="Penugasan telah berubah. Muat ulang tugas sebelum melapor.")
-        if transactions.session_context.get() is not None:
-            officer = await db.users.find_one({"id": user["id"], "company_id": user["company_id"], "status": "aktif"})
-            if not officer:
-                raise HTTPException(status_code=403, detail="Akun Anda tidak aktif")
-            await db.users.update_one({"id": user["id"], "company_id": user["company_id"]}, {"$inc": {"relation_version": 1}})
-            authority = await db.power_of_attorneys.find_one({"id": live.get("power_of_attorney_id"), "company_id": user["company_id"]})
-            client_doc = await db.clients.find_one({"id": live.get("client_id"), "company_id": user["company_id"]})
-            if not authority or not client_doc:
-                raise HTTPException(status_code=409, detail="Data kuasa atau klien sudah berubah")
-            availability = task_availability(live, authority, client_doc)
-            if not availability["can_report"]:
-                raise HTTPException(status_code=409, detail=availability["blocked_reason"])
-            for collection, identity in ((db.clients, live["client_id"]), (db.power_of_attorneys, live["power_of_attorney_id"])):
-                await collection.update_one({"id": identity, "company_id": user["company_id"]}, {"$inc": {"relation_version": 1}})
-        await db.assignments.update_one({"id": assignment["id"], "company_id": user["company_id"], "status": ASSIGNMENT_ACTIVE}, {"$inc": {"report_version": 1}})
-        snapshot = await db.accounts.find_one({"id": account_id, "company_id": user["company_id"]}, {"_id": 0})
-        if transactions.session_context.get() is not None and not snapshot:
-            raise HTTPException(status_code=409, detail="Unit sudah tidak tersedia")
-        if snapshot:
-            report["account_snapshot"] = snapshot
-        try:
-            await db.field_reports.insert_one(dict(report))
-        except DuplicateKeyError:
-            raise HTTPException(status_code=400, detail="Laporan untuk tugas ini sudah dikirim")
-        for ph in saved:
-            await db.report_photos.insert_one({"id": new_id(), "report_id": report_id, "url": ph["url"], "storage_path": ph["storage_path"], "created_at": now_iso()})
-            await db.upload_intents.delete_one({"id": ph["storage_path"], "company_id": user["company_id"]})
-        await db.accounts.update_one({"id": account_id, "company_id": user["company_id"]}, {"$set": {"status": ACCOUNT_STATUS_MAP.get(status, "DALAM_PROSES"), "updated_at": now_iso()}})
-        await log_audit(user, f"Mengirim laporan ({status})", "field_report", report_id, request)
-    await transactions.run(client, persist_report)
-    out = clean(report)
-    out["photos"] = [{"url": s["url"]} for s in saved]
-    return out
-
 @api_router.get("/laporan")
 async def list_laporan(
     user: dict = Depends(admin_required),
     petugas_id: Optional[str] = None, client_id: Optional[str] = None,
     status: Optional[str] = None, tanggal: Optional[str] = None,
+    payment_status: Optional[Literal["MENUNGGU_PEMBAYARAN", "SELESAI", "BELUM_DICATAT"]] = None, assignment_id: Optional[str] = None,
     provinsi: Optional[str] = None, search: Optional[str] = None,
     response: Response = None, page: int = Query(1, ge=1), limit: int = Query(500, ge=1, le=1000),
 ):
     q = {"company_id": user["company_id"]}
+    if assignment_id:
+        q["assignment_id"] = assignment_id
+    if payment_status:
+        q["payment_status"] = {"$exists": False} if payment_status == "BELUM_DICATAT" else payment_status
     if petugas_id:
         q = member_query(q, petugas_id, "petugas_id")
     if status:
@@ -1624,7 +1501,7 @@ async def list_laporan(
         letter_ids = await db.assignment_letters.distinct("id", {"company_id": user["company_id"], "nomor": pattern})
         clauses.append({"$or": [{"account_snapshot.nama_debitur": pattern}, {"account_snapshot.nomor_polisi": pattern}, {"account_snapshot": {"$exists": False}, "account_id": {"$in": account_ids}}, {"assignment_letter_id": {"$in": letter_ids}}]})
     if clauses:
-        q["$and"] = clauses
+        q.setdefault("$and", []).extend(clauses)
     reports = await paged_documents(db.field_reports, q, response, page, limit)
     result = []
     for r in reports:
@@ -1636,13 +1513,13 @@ async def list_laporan(
             continue
         if provinsi and (not acc or provinsi.lower() not in (acc.get("provinsi", "").lower())):
             continue
-        photos = await db.report_photos.find({"report_id": r["id"]}, {"_id": 0}).to_list(10)
+        photos = await db.report_photos.find({"report_id": r["id"], "kind": {"$ne": "payment"}}, {"_id": 0}).to_list(10)
         result.append({
             **r,
             "nama_debitur": acc["nama_debitur"] if acc else "-",
             "nomor_polisi": acc["nomor_polisi"] if acc else "-",
             "provinsi": acc.get("provinsi", "") if acc else "",
-            "petugas_name": petugas["name"] if petugas else "-",
+            "petugas_name": ", ".join(r.get("team_names") or []) or (petugas["name"] if petugas else "-"),
             "letter_nomor": letter["nomor"] if letter else "-",
             "client_name": client_doc["nama_perusahaan"] if client_doc else "-",
             "photos": photos,
@@ -1661,10 +1538,10 @@ async def get_laporan(rid: str, user: dict = Depends(admin_required)):
     letter = await db.assignment_letters.find_one({"id": r["assignment_letter_id"], "company_id": user["company_id"]}, {"_id": 0})
     petugas = await db.users.find_one({"id": r["petugas_id"], "company_id": user["company_id"]}, {"_id": 0, "password_hash": 0})
     client_doc = await db.clients.find_one({"id": letter["client_id"], "company_id": user["company_id"]}, {"_id": 0}) if letter else None
-    photos = await db.report_photos.find({"report_id": rid}, {"_id": 0}).to_list(10)
+    photos = await db.report_photos.find({"report_id": rid, "kind": {"$ne": "payment"}}, {"_id": 0}).to_list(10)
     await log_audit(user, "Melihat laporan", "field_report", rid)
     return {
-        **r, "account": acc, "petugas_name": petugas["name"] if petugas else "-",
+        **r, "account": acc, "petugas_name": ", ".join(r.get("team_names") or []) or (petugas["name"] if petugas else "-"),
         "letter_nomor": letter["nomor"] if letter else "-",
         "client_name": client_doc["nama_perusahaan"] if client_doc else "-",
         "photos": photos,
@@ -1673,9 +1550,15 @@ async def get_laporan(rid: str, user: dict = Depends(admin_required)):
 @api_router.patch("/laporan/{rid}/review")
 @transactional
 async def review_laporan(rid: str, data: ReviewInput, request: Request, user: dict = Depends(admin_required)):
+    report = await db.field_reports.find_one({"id": rid, "company_id": user["company_id"]})
+    if not report:
+        raise HTTPException(status_code=404, detail="Laporan tidak ditemukan")
+    update = {"catatan_admin": data.catatan_admin, "reviewed": True, "updated_at": now_iso()}
+    if not report.get("payment_status"):
+        update["report_status"] = "REVIEWED"
     res = await db.field_reports.update_one(
         {"id": rid, "company_id": user["company_id"]},
-        {"$set": {"catatan_admin": data.catatan_admin, "reviewed": True, "report_status": "REVIEWED", "updated_at": now_iso()}},
+        {"$set": update},
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Laporan tidak ditemukan")
@@ -1866,7 +1749,9 @@ async def serve_file(path: str, user: dict = Depends(get_current_user)):
 # Mount
 # ---------------------------------------------------------------------------
 import chat
+import admin_reports
 import sys
+admin_reports.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 
@@ -1959,6 +1844,7 @@ async def initialize_database():
     await db.assignments.create_index([("company_id", 1), ("officer_id", 1), ("status", 1)])
     await db.assignment_letters.create_index([("status", 1), ("masa_berlaku", 1)])
     await db.field_reports.create_index([("company_id", 1), ("created_at", -1)])
+    await db.field_reports.create_index([("company_id", 1), ("assignment_id", 1)])
     await db.report_photos.create_index("storage_path", unique=True)
     await db.documents.create_index([("company_id", 1), ("storage_path", 1)])
     await db.accounts.create_index("company_id")

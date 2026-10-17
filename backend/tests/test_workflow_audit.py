@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 from types import SimpleNamespace
 import asyncio
 import pytest
-from test_local_regressions import local_api, server
+from test_local_regressions import local_api, server, admin_report_data, configure_admin_report
 import storage
 
 
@@ -116,12 +116,12 @@ def test_failed_letter_insert_rolls_back_assignment(local_api, monkeypatch):
     db.accounts.update_one.assert_not_called()
 
 
-def test_report_rechecks_revoked_authority(local_api):
+def test_admin_report_rejects_cancelled_assignment(local_api):
     api, db = local_api
-    db.assignments.find_one.return_value = {"id": "a", "account_id": "unit", "status": "AKTIF", "power_of_attorney_id": "sk"}
+    db.assignments.find_one.return_value = {"id": "a", "account_id": "unit", "status": "DIBATALKAN", "power_of_attorney_id": "sk"}
     db.power_of_attorneys.find_one.return_value = {"status": "dicabut"}
-    result = api.post("/api/laporan", data={"assignment_id": "a", "account_id": "unit", "status": "TIDAK_DITEMUKAN", "catatan": "Kunjungan telah dilakukan", "latitude": "0", "longitude": "0"})
-    assert result.status_code == 400
+    result = api.post("/api/laporan", data=admin_report_data(assignment_id="a"))
+    assert result.status_code == 409
     db.field_reports.insert_one.assert_not_called()
 
 
@@ -191,8 +191,8 @@ def test_invalid_second_photo_does_not_upload_first(local_api, monkeypatch):
     api, db = local_api
     uploader = Mock()
     monkeypatch.setattr(server, "put_object", uploader)
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF"}
-    result = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "UNIT_DITEMUKAN", "catatan": "Foto kunjungan lengkap", "latitude": "0", "longitude": "0"}, files=[("photos", ("valid.png", login_background_png(), "image/png")), ("photos", ("invalid.jpg", b"corrupt", "image/jpeg"))])
+    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF", "officer_id": "officer"}
+    result = api.post("/api/laporan", data=admin_report_data(status="UNIT_DITEMUKAN"), files=[("photos", ("valid.png", login_background_png(), "image/png")), ("photos", ("invalid.jpg", b"corrupt", "image/jpeg"))])
     assert result.status_code == 400
     uploader.assert_not_called()
 
@@ -202,9 +202,10 @@ def test_storage_outage_returns_actionable_error_without_report(local_api, monke
     from requests.exceptions import HTTPError
     from test_local_regressions import login_background_png
     api, db = local_api
+    configure_admin_report(db, monkeypatch)
     monkeypatch.setattr(server, "put_object", Mock(side_effect=HTTPError("remote provider offline")))
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF"}
-    result = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "UNIT_DITEMUKAN", "catatan": "Foto kunjungan lengkap", "latitude": "0", "longitude": "0"}, files={"photos": ("valid.png", login_background_png(), "image/png")})
+    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF", "officer_id": "officer"}
+    result = api.post("/api/laporan", data=admin_report_data(status="UNIT_DITEMUKAN"), files={"photos": ("valid.png", login_background_png(), "image/png")})
     assert result.status_code == 503
     assert "Penyimpanan" in result.json()["detail"]
     db.field_reports.insert_one.assert_not_called()

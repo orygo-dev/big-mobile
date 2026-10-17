@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Car, MapPin, ChevronRight, FileCheck2, ClipboardPen } from "lucide-react";
+import { Car, MapPin, ChevronRight, FileCheck2 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ACCOUNT_STATUS } from "@/lib/constants";
 
@@ -25,13 +25,9 @@ export default function TaskCard({ task, dataTestid }) {
       </Link>
       <div className="px-4 pb-4">
         {task.sudah_dilaporkan ? (
-          <p className="text-xs text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2.5">✓ Laporan sudah dikirim</p>
-        ) : task.can_report === false ? (
-          <p className="text-xs text-amber-800 bg-amber-50 rounded-xl px-3 py-2.5">{task.blocked_reason}</p>
+          <Link to="/app/riwayat" className="block text-xs text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2.5">Lihat laporan admin & pembayaran tim</Link>
         ) : (
-          <Link to={`${path}/laporan`} className="brand-action flex items-center justify-center gap-2 min-h-11 rounded-xl px-3 py-3 text-sm font-semibold" aria-label={`Buat laporan untuk ${account.nama_debitur}`}>
-            <ClipboardPen className="w-4 h-4" aria-hidden="true" /> Buat laporan
-          </Link>
+          <p className="text-xs text-slate-600 bg-slate-50 rounded-xl px-3 py-2.5">Laporan lapangan dan pembayaran dicatat oleh admin.</p>
         )}
       </div>
     </article>

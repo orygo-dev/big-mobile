@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import api, { errMsg, fileUrl } from "@/lib/api";
+import api, { errMsg } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { StatusBadge } from "@/components/StatusBadge";
-import { REPORT_STATUS, formatDateTime } from "@/lib/constants";
+import { formatDateTime } from "@/lib/constants";
 import EmptyState from "@/components/EmptyState";
-import { FileSearch, Loader2, Search, Eye, MapPin, ImageIcon } from "lucide-react";
-import { toast } from "sonner";
+import { FileSearch, Loader2, Search, Eye, ImageIcon } from "lucide-react";
+import {Button} from "@/components/ui/button";
+import AdminReportDialog from "@/components/AdminReportDialog";
+import {PaymentBadge, PAYMENT_STATUS, rupiah} from "@/components/ReportPayment";
 
 export default function LaporanPetugas() {
   const navigate = useNavigate();
@@ -18,15 +19,18 @@ export default function LaporanPetugas() {
   const [petugasFilter, setPetugasFilter] = useState("all");
   const [tanggal, setTanggal] = useState("");
   const [petugasList, setPetugasList] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
+    setError("");
     api.get("/laporan", { params: {
       search: search || undefined,
-      status: statusFilter !== "all" ? statusFilter : undefined,
+      payment_status: statusFilter !== "all" ? statusFilter : undefined,
       petugas_id: petugasFilter !== "all" ? petugasFilter : undefined,
       tanggal: tanggal || undefined,
-    }}).then(({ data }) => setItems(data)).catch((e) => toast.error(errMsg(e))).finally(() => setLoading(false));
+    }}).then(({ data }) => setItems(data)).catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
   }, [search, statusFilter, petugasFilter, tanggal]);
 
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
@@ -34,9 +38,12 @@ export default function LaporanPetugas() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
         <h1 className="font-heading text-2xl font-bold text-slate-900">Laporan Lapangan</h1>
-        <p className="text-sm text-slate-500 mt-1">Hasil kunjungan lapangan dari petugas.</p>
+        <p className="text-sm text-slate-500 mt-1">Laporan yang dibuat admin, bukti lapangan, dan pembayaran per penugasan/tim.</p>
+        </div>
+        <Button onClick={()=>setOpen(true)} data-testid="laporan-create-button">Laporan Baru</Button>
       </div>
 
       <div className="brand-panel rounded-2xl border border-slate-200 p-4 flex flex-col lg:flex-row gap-3">
@@ -50,7 +57,7 @@ export default function LaporanPetugas() {
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="rounded-xl lg:w-44" data-testid="laporan-status-filter"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent><SelectItem value="all">Semua Status</SelectItem>{Object.keys(REPORT_STATUS).map((s) => <SelectItem key={s} value={s}>{REPORT_STATUS[s].label}</SelectItem>)}</SelectContent>
+          <SelectContent><SelectItem value="all">Semua Pembayaran</SelectItem>{Object.keys(PAYMENT_STATUS).map((s) => <SelectItem key={s} value={s}>{PAYMENT_STATUS[s].label}</SelectItem>)}</SelectContent>
         </Select>
         <Input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} className="rounded-xl lg:w-40" data-testid="laporan-tanggal-filter" />
       </div>
@@ -58,8 +65,8 @@ export default function LaporanPetugas() {
       <div className="brand-panel rounded-2xl border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
-        ) : items.length === 0 ? (
-          <EmptyState icon={FileSearch} title="Belum ada laporan" desc="Laporan dari petugas akan muncul di sini." />
+        ) : error ? <div role="alert" className="p-5 text-sm"><p>{error}</p><Button onClick={load} variant="outline" className="mt-3">Coba lagi</Button></div> : items.length === 0 ? (
+          <EmptyState icon={FileSearch} title="Belum ada laporan" desc="Klik Laporan Baru untuk membuat laporan penugasan dan mencatat pembayaran tim." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -70,8 +77,8 @@ export default function LaporanPetugas() {
                   <th className="px-3 py-3 font-medium">Surat Tugas</th>
                   <th className="px-3 py-3 font-medium">Debitur</th>
                   <th className="px-3 py-3 font-medium">No. Polisi</th>
-                  <th className="px-3 py-3 font-medium">Status</th>
-                  <th className="px-3 py-3 font-medium">Lokasi</th>
+                  <th className="px-3 py-3 font-medium">Status Pembayaran</th>
+                  <th className="px-3 py-3 font-medium">Nominal Tim</th>
                   <th className="px-3 py-3 font-medium">Foto</th>
                   <th className="px-5 py-3 font-medium text-right">Aksi</th>
                 </tr>
@@ -84,13 +91,14 @@ export default function LaporanPetugas() {
                     <td className="px-3 py-3 font-mono text-xs text-slate-600">{r.letter_nomor}</td>
                     <td className="px-3 py-3 text-slate-700">{r.nama_debitur}</td>
                     <td className="px-3 py-3 font-mono text-slate-700">{r.nomor_polisi}</td>
-                    <td className="px-3 py-3"><StatusBadge map={REPORT_STATUS} value={r.status} /></td>
-                    <td className="px-3 py-3">{r.latitude != null && r.longitude != null ? <MapPin className="w-4 h-4 text-emerald-600" /> : <span className="text-xs text-slate-400">-</span>}</td>
+                    <td className="px-3 py-3"><PaymentBadge status={r.payment_status} /></td>
+                    <td className="px-3 py-3 whitespace-nowrap">{rupiah(r.payment_amount)}</td>
                     <td className="px-3 py-3">
                       {r.photos?.length ? <span className="inline-flex items-center gap-1 text-xs text-slate-600"><ImageIcon className="w-3.5 h-3.5" />{r.photos.length}</span> : <span className="text-xs text-slate-400">-</span>}
                     </td>
                     <td className="px-5 py-3 text-right">
                       <button onClick={() => navigate(`/admin/laporan/${r.id}`)} className="text-blue-600 hover:text-blue-800 p-1.5" data-testid={`laporan-view-${r.id}`}><Eye className="w-4 h-4" /></button>
+                      {!r.payment_proof && <button onClick={()=>navigate(`/admin/laporan/${r.id}#pembayaran`)} className="text-xs font-semibold text-orange-700 ml-2" data-testid={`laporan-pay-${r.id}`}>Upload Bukti Pembayaran</button>}
                     </td>
                   </tr>
                 ))}
@@ -99,6 +107,7 @@ export default function LaporanPetugas() {
           </div>
         )}
       </div>
+      <AdminReportDialog open={open} onOpenChange={setOpen} onCreated={report=>{setOpen(false);navigate(`/admin/laporan/${report.id}`);}} />
     </div>
   );
 }

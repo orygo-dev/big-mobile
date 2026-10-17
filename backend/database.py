@@ -275,5 +275,10 @@ class Database:
             params.extend(values)
         sql=f'SELECT COUNT(*) FROM bm_chat_messages m JOIN bm_assignments a ON a.g_id=m.g_assignment_id AND a.g_company_id=m.g_company_id LEFT JOIN bm_chat_reads r ON r.g_company_id=m.g_company_id AND r.g_assignment_id=m.g_assignment_id AND r.g_user_id=%s WHERE {where} AND m.g_sequence>COALESCE(r.g_sequence,0){scope}'
         rows=await self.execute(sql,[user['id'],*params],fetch=True);return int(rows[0][0])
+    async def reportable_assignments(self,company_id,statuses,page,limit):
+        where,params=compile_query({'company_id':company_id,'status':{'$in':statuses}},'a')
+        sql=f'SELECT a.payload FROM bm_assignments a LEFT JOIN bm_field_reports r ON r.g_assignment_id=a.g_id AND r.g_company_id=a.g_company_id WHERE {where} AND r._pk IS NULL ORDER BY a.g_created_at DESC,a.g_id ASC LIMIT %s OFFSET %s'
+        rows=await self.execute(sql,[*params,limit+1,(page-1)*limit],fetch=True)
+        return [json.loads(row[0]) for row in rows]
     async def close(self):
         if self.pool:self.pool.close();await self.pool.wait_closed();self.pool=None;await asyncio.sleep(0)

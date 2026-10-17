@@ -1,19 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api, { fileUrl, errMsg } from "@/lib/api";
-import { StatusBadge } from "@/components/StatusBadge";
-import { REPORT_STATUS, formatDateTime } from "@/lib/constants";
+import { formatDateTime } from "@/lib/constants";
 import EmptyState from "@/components/EmptyState";
 import { History, Loader2, ImageIcon, MapPin } from "lucide-react";
+import ReportPayment, {PaymentBadge} from "@/components/ReportPayment";
 
 const FILTERS = [
   { key: "all", label: "Semua" },
-  { key: "UNIT_DITEMUKAN", label: "Ditemukan" },
-  { key: "TIDAK_DITEMUKAN", label: "Tidak Ditemukan" },
-  { key: "ALAMAT_TIDAK_SESUAI", label: "Alamat Tidak Sesuai" },
-  { key: "PINDAH_ALAMAT", label: "Pindah Alamat" },
-  { key: "UNIT_TIDAK_ADA", label: "Unit Tidak Ada" },
-  { key: "LAINNYA", label: "Lainnya" },
+  { key: "MENUNGGU_PEMBAYARAN", label: "Menunggu Pembayaran" },
+  { key: "SELESAI", label: "Selesai" },
+  { key: "BELUM_DICATAT", label: "Belum Dicatat" },
 ];
 
 export default function Riwayat() {
@@ -26,7 +23,7 @@ export default function Riwayat() {
   useEffect(() => {
     setLoading(true);
     setError("");
-    api.get("/my/riwayat", { params: { status: filter !== "all" ? filter : undefined } })
+    api.get("/my/riwayat", { params: { payment_status: filter !== "all" ? filter : undefined } })
       .then(({ data }) => setItems(data)).catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
   }, [filter, reload]);
 
@@ -34,7 +31,7 @@ export default function Riwayat() {
     <div>
       <div className="brand-hero text-white px-5 pt-8 pb-5 sticky top-0 z-10">
         <h1 className="font-heading text-xl font-bold">Riwayat Laporan</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Laporan yang telah Anda kirim</p>
+        <p className="text-slate-400 text-sm mt-0.5">Laporan admin dan status pembayaran tim Anda</p>
       </div>
 
       <div className="px-4 mt-4">
@@ -52,7 +49,7 @@ export default function Riwayat() {
         ) : error ? (
           <div role="alert" className="brand-panel p-4 mt-2 text-sm"><p>{error}</p><button className="text-blue-600 mt-2" onClick={() => setReload((value) => value + 1)}>Coba lagi</button></div>
         ) : items.length === 0 ? (
-          <div className="brand-panel rounded-2xl border border-slate-100 mt-2"><EmptyState icon={History} title="Belum ada laporan" desc="Laporan yang Anda kirim akan tampil di sini." /></div>
+          <div className="brand-panel rounded-2xl border border-slate-100 mt-2"><EmptyState icon={History} title="Belum ada laporan" desc="Laporan yang dibuat admin untuk penugasan Anda akan tampil di sini." /></div>
         ) : (
           <div className="space-y-3 mt-2">
             {items.map((r) => (
@@ -62,7 +59,7 @@ export default function Riwayat() {
                     <p className="font-semibold text-slate-800 text-sm">{r.nama_debitur}</p>
                     <p className="text-xs text-slate-400 font-mono">{r.nomor_polisi} · {r.letter_nomor}</p>
                   </div>
-                  <StatusBadge map={REPORT_STATUS} value={r.status} />
+                  <PaymentBadge status={r.payment_status} />
                 </div>
                 <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-50 text-xs text-slate-400">
                   <span>{formatDateTime(r.created_at)}</span>
@@ -74,7 +71,7 @@ export default function Riwayat() {
                     {r.photos.map((p, i) => <img key={i} src={fileUrl(p.url)} alt="" className="w-16 h-16 rounded-lg object-cover flex-shrink-0 border border-slate-100" />)}
                   </div>
                 )}
-                <p className="text-xs mt-3 text-blue-700">{r.reviewed ? "Sudah direview admin" : "Menunggu review admin"}</p>
+                <ReportPayment report={r} compact />
                 {r.catatan_admin && <div className="mt-2 rounded-xl bg-blue-50 p-3 text-sm text-slate-700"><p className="font-semibold mb-1">Catatan admin</p>{r.catatan_admin}</div>}
                 {r.assignment_id && <Link to={`/app/chat/${r.assignment_id}`} className="inline-block mt-3 text-sm font-semibold text-blue-600">Buka chat penugasan</Link>}
               </div>

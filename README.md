@@ -45,3 +45,7 @@ Jalankan suite keamanan/ops dengan `python -m pytest backend/tests/test_producti
 ## Chat penugasan
 
 Chat admin–petugas mendukung foto, dokumen dan lokasi GPS, kotak masuk serta pesan belum dibaca. Percakapan terikat pada penugasan dan menjadi hanya baca setelah tugas ditutup. Lihat [panduan chat](CHAT.md) untuk format lampiran, keamanan, retry dan batas operasional.
+
+Laporan lapangan dibuat oleh admin melalui **Laporan Lapangan → Laporan Baru**. Admin memilih penugasan yang belum memiliki laporan, mengunggah 1–10 gambar bukti, dan mengisi satu nominal pembayaran untuk seluruh tim. Setiap file maksimal 8 MB; total file per laporan maksimal 40 MB.
+
+Tanpa bukti pembayaran, status laporan **Menunggu Pembayaran**. Admin dapat mengunggah bukti JPG/PNG/WEBP atau PDF saat pembuatan maupun kemudian dari detail laporan; setelah tersimpan status menjadi **Selesai**. Bukti pembayaran yang sudah dicatat tidak dapat ditimpa. Seluruh anggota tim dapat membaca laporan dan bukti pembayaran di **Riwayat Laporan**, sedangkan pembuatan laporan dan pencatatan pembayaran hanya diizinkan bagi admin. Laporan lama tetap tersedia dan data pembayaran yang belum pernah dicatat ditampilkan sebagai **Belum Dicatat**.

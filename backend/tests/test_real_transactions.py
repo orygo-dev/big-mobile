@@ -68,7 +68,12 @@ def assign(live,account):
 
 
 def report_payload(letter,account):
-    return {'assignment_id':letter['assignment_id'],'account_id':account['id'],'status':'TIDAK_DITEMUKAN','catatan':'Kunjungan sudah dilaksanakan dengan lengkap','latitude':'-6.2','longitude':'106.8'}
+    return {'client_report_id':str(uuid.uuid4()),'payment_amount':'500000','assignment_id':letter['assignment_id'],'account_id':account['id'],'status':'TIDAK_DITEMUKAN','catatan':'Kunjungan sudah dilaksanakan dengan lengkap','latitude':'-6.2','longitude':'106.8'}
+
+
+def report_files():
+    output=io.BytesIO();Image.new('RGB',(32,32),'blue').save(output,'PNG')
+    return {'photos': ('proof.png',output.getvalue(),'image/png')}
 
 
 def test_assignment_failure_rolls_back_letter_unit_counter_and_audit(live):
@@ -108,7 +113,7 @@ def test_real_photo_report_review_isolation_and_renewal(live):
     account,sk=unit(live);letter=assign(live,account)
     image=io.BytesIO();Image.new('RGB',(32,32),'blue').save(image,format='PNG')
     payload=report_payload(letter,account);payload['status']='UNIT_DITEMUKAN'
-    report=live['call']('officer','POST','/laporan',data=payload,files={'photos':('proof.png',image.getvalue(),'image/png')}).json()
+    report=live['call']('admin','POST','/laporan',data=payload,files={'photos':('proof.png',image.getvalue(),'image/png')}).json()
     path=report['photos'][0]['url'][4:]
     assert live['call']('admin','GET',path).content==image.getvalue()
     live['call']('other','GET',path,404);live['call']('foreign','GET',path,404)
@@ -131,7 +136,7 @@ def test_report_metadata_failure_rolls_back_and_orphan_file_is_cleaned(live):
     db.block_writes('report_photos',True)
     try:
         payload=report_payload(letter,account);payload['status']='UNIT_DITEMUKAN'
-        live['call']('officer','POST','/laporan',500,data=payload,files={'photos':('proof.png',image.getvalue(),'image/png')})
+        live['call']('admin','POST','/laporan',500,data=payload,files={'photos':('proof.png',image.getvalue(),'image/png')})
         assert db.field_reports.count_documents({'assignment_id':letter['assignment_id']})==0
         assert db.accounts.find_one({'id':account['id']})['status']=='DITUGASKAN'
         intents=list(db.upload_intents.find({}))
@@ -146,13 +151,13 @@ def test_report_metadata_failure_rolls_back_and_orphan_file_is_cleaned(live):
 
 def test_concurrent_reports_and_cancellation_remain_consistent(live):
     account,_=unit(live);letter=assign(live,account);payload=report_payload(letter,account)
-    def send():return requests.post(live['url']+'/laporan',data=payload,headers={'Authorization':'Bearer '+live['tokens']['officer']},timeout=30)
+    def send():return requests.post(live['url']+'/laporan',data=payload,files=report_files(),headers={'Authorization':'Bearer '+live['tokens']['admin']},timeout=30)
     with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:send(),range(2)))
-    assert sorted(response.status_code for response in responses)==[200,400]
+    assert sorted(response.status_code for response in responses)==[200,200]
     assert live['db'].field_reports.count_documents({'assignment_id':letter['assignment_id']})==1
     account2,_=unit(live);letter2=assign(live,account2)
     def cancellation():return live['call']('admin','PATCH','/surat-tugas/'+letter2['id']+'/status',json={'status':'dibatalkan'})
-    def reporting():return requests.post(live['url']+'/laporan',data=report_payload(letter2,account2),headers={'Authorization':'Bearer '+live['tokens']['officer']},timeout=30)
+    def reporting():return requests.post(live['url']+'/laporan',data=report_payload(letter2,account2),files=report_files(),headers={'Authorization':'Bearer '+live['tokens']['admin']},timeout=30)
     with ThreadPoolExecutor(max_workers=2) as pool:
         close=pool.submit(cancellation);report=pool.submit(reporting);close.result();outcome=report.result()
     assert outcome.status_code in {200,400,409}
@@ -349,9 +354,9 @@ def test_team_assignment_letter_chat_report_and_access_isolation(live):
     message = call('other', 'POST', f'/chat/{task}/messages', data={'client_message_id': str(uuid.uuid4()), 'location': json.dumps({'latitude': -6.2, 'longitude': 106.8})}, files={'files': ('team.png', photo.getvalue(), 'image/png')}).json()
     attachment = message['attachments'][0]['url'][4:]
     call('officer', 'GET', attachment); call('outsider', 'GET', attachment, 404)
-    report = call('other', 'POST', '/laporan', data=report_payload(letter, account), files={'photos': ('proof.png', photo.getvalue(), 'image/png')}).json()
-    assert report['petugas_id'] == ids[1]
-    call('officer', 'POST', '/laporan', 400, data=report_payload(letter, account))
+    report = call('admin', 'POST', '/laporan', data=report_payload(letter, account), files={'photos': ('proof.png', photo.getvalue(), 'image/png')}).json()
+    assert report['petugas_ids'] == ids and report['created_by'] == live['users']['admin']['id']
+    call('officer', 'POST', '/laporan', 403, data=report_payload(letter, account))
     assert db.field_reports.count_documents({'assignment_id': task}) == 1
     for role in ('officer', 'other'):
         assert any(item['id'] == report['id'] for item in call(role, 'GET', '/my/riwayat').json())
@@ -369,3 +374,65 @@ def test_team_assignment_rejects_foreign_member_without_partial_creation(live):
     account, _ = unit(live)
     live['call']('admin', 'POST', '/penugasan', 404, json={'account_id': account['id'], 'petugas_ids': [live['users']['officer']['id'], live['users']['foreign']['id']]})
     assert live['db'].assignments.count_documents({'account_id': account['id']}) == 0
+
+
+def test_admin_report_team_payment_pending_late_proof_and_retry(live):
+    from pypdf import PdfWriter
+    call=live['call'];db=live['db'];account,_=unit(live)
+    ids=[live['users'][role]['id'] for role in ('officer','other')]
+    letter=call('admin','POST','/penugasan',json={'account_id':account['id'],'petugas_ids':ids}).json()
+    task=letter['assignment_id'];data=report_payload(letter,account)
+    assert any(item['assignment_id']==task for item in call('admin','GET','/laporan-options').json()['items'])
+    image=report_files()['photos'][1]
+    files=[('photos',('one.png',image,'image/png')),('photos',('two.png',image,'image/png'))]
+    call('officer','POST','/laporan',403,data=data,files=files)
+    report=call('admin','POST','/laporan',data=data,files=files).json()
+    assert report['payment_status']=='MENUNGGU_PEMBAYARAN' and report['payment_amount']=='500000.00'
+    assert report['created_role']=='admin' and report['petugas_ids']==ids and len(report['photos'])==2
+    assert call('admin','POST','/laporan',data=data,files=files).json()['id']==report['id']
+    assert db.field_reports.count_documents({'assignment_id':task})==1
+    assert not any(item['assignment_id']==task for item in call('admin','GET','/laporan-options').json()['items'])
+    writer=PdfWriter();writer.add_blank_page(width=100,height=100);proof=io.BytesIO();writer.write(proof)
+    payment={'payment_request_id':str(uuid.uuid4())};upload={'file':('payment.pdf',proof.getvalue(),'application/pdf')}
+    call('officer','POST',f"/laporan/{report['id']}/payment",403,data=payment,files=upload)
+    call('foreign','POST',f"/laporan/{report['id']}/payment",404,data=payment,files=upload)
+    paid=call('admin','POST',f"/laporan/{report['id']}/payment",data=payment,files=upload).json()
+    assert paid['id']==report['id'] and paid['payment_status']=='SELESAI' and paid['payment_amount']=='500000.00'
+    assert call('admin','POST',f"/laporan/{report['id']}/payment",data=payment,files=upload).json()['payment_proof']['url']==paid['payment_proof']['url']
+    call('admin','POST',f"/laporan/{report['id']}/payment",409,data={'payment_request_id':str(uuid.uuid4())},files=upload)
+    assert len(call('admin','GET',f"/laporan/{report['id']}").json()['photos'])==2
+    for role in ('officer','other'):
+        history=call(role,'GET','/my/riwayat?payment_status=SELESAI').json()
+        assert any(item['id']==report['id'] and item['payment_amount']=='500000.00' for item in history)
+        assert call(role,'GET',paid['payment_proof']['url'][4:]).content==proof.getvalue()
+    call('outsider','GET',paid['payment_proof']['url'][4:],404)
+    call('foreign','GET',paid['payment_proof']['url'][4:],404)
+    call('admin','PATCH',f"/laporan/{report['id']}/review",json={'catatan_admin':'Tetap selesai'})
+    assert db.field_reports.find_one({'id':report['id']})['report_status']=='SELESAI'
+
+
+def test_admin_report_immediate_payment_and_payment_audit_rollback(live):
+    call=live['call'];db=live['db'];account,_=unit(live);letter=assign(live,account)
+    photo=report_files()['photos'][1]
+    files=[('photos',('evidence.png',photo,'image/png')),('payment_proof',('paid.png',photo,'image/png'))]
+    paid=call('admin','POST','/laporan',data=report_payload(letter,account),files=files).json()
+    assert paid['payment_status']=='SELESAI' and len(paid['photos'])==1 and paid['payment_proof']
+    other,_=unit(live);other_letter=assign(live,other)
+    pending=call('admin','POST','/laporan',data=report_payload(other_letter,other),files=report_files()).json()
+    db.block_writes('audit_logs',True)
+    try:
+        call('admin','POST',f"/laporan/{pending['id']}/payment",500,data={'payment_request_id':str(uuid.uuid4())},files={'file':('payment.png',photo,'image/png')})
+        stored=db.field_reports.find_one({'id':pending['id']})
+        assert stored['payment_status']=='MENUNGGU_PEMBAYARAN' and not stored.get('payment_proof')
+        assert db.report_photos.count_documents({'report_id':pending['id'],'kind':'payment'})==0
+    finally:db.block_writes('audit_logs',False)
+
+
+def test_concurrent_team_payment_keeps_one_authoritative_proof(live):
+    account,_=unit(live);letter=assign(live,account);call=live['call']
+    report=call('admin','POST','/laporan',data=report_payload(letter,account),files=report_files()).json()
+    photo=report_files()['photos'][1]
+    def pay():return requests.post(live['url']+f"/laporan/{report['id']}/payment",headers={'Authorization':'Bearer '+live['tokens']['admin']},data={'payment_request_id':str(uuid.uuid4())},files={'file':('payment.png',photo,'image/png')},timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:pay(),range(2)))
+    assert sorted(response.status_code for response in responses)==[200,409]
+    assert live['db'].report_photos.count_documents({'report_id':report['id'],'kind':'payment'})==1

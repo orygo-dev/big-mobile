@@ -3,11 +3,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import api, { errMsg, fileUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { StatusBadge } from "@/components/StatusBadge";
-import { REPORT_STATUS, formatDateTime } from "@/lib/constants";
+import { formatDateTime } from "@/lib/constants";
 import MapView from "@/components/MapView";
 import { ArrowLeft, Loader2, MapPin, ExternalLink, User, Save, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import ReportPayment, {PaymentBadge} from "@/components/ReportPayment";
 
 export default function LaporanDetail() {
   const { id } = useParams();
@@ -49,11 +49,12 @@ export default function LaporanDetail() {
           <h1 className="font-heading text-2xl font-bold text-slate-900">Detail Laporan</h1>
           <p className="text-sm text-slate-500 mt-1 font-mono">{r.letter_nomor}</p>
         </div>
-        <StatusBadge map={REPORT_STATUS} value={r.status} dataTestid="laporan-detail-status" />
+        <PaymentBadge status={r.payment_status} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="space-y-5">
+          <ReportPayment report={r} admin onSaved={load} />
           <div className="brand-panel rounded-2xl border border-slate-200 p-5">
             <h2 className="font-heading font-semibold text-slate-800 mb-3">Data Tugas</h2>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -68,9 +69,10 @@ export default function LaporanDetail() {
           </div>
 
           <div className="brand-panel rounded-2xl border border-slate-200 p-5">
-            <div className="flex items-center gap-2 mb-3"><User className="w-4 h-4 text-blue-600" /><h2 className="font-heading font-semibold text-slate-800">Petugas & Catatan</h2></div>
+            <div className="flex items-center gap-2 mb-3"><User className="w-4 h-4 text-blue-600" /><h2 className="font-heading font-semibold text-slate-800">Tim & Catatan</h2></div>
             <p className="text-sm text-slate-700 font-medium">{r.petugas_name}</p>
             <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(r.created_at)}</p>
+            {r.created_by_name && <p className="text-xs text-slate-500 mt-1">Dibuat oleh admin: {r.created_by_name}</p>}
             <p className="text-sm text-slate-600 mt-3 bg-slate-50 rounded-xl p-3">{r.catatan}</p>
             {r.lokasi_alasan && <p className="text-xs text-amber-700 mt-2 bg-amber-50 rounded-lg p-2">Alasan lokasi: {r.lokasi_alasan}</p>}
           </div>

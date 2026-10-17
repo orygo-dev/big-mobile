@@ -87,19 +87,7 @@ export default function DetailTugas() {
       </div>
 
       <div className="brand-footer fixed bottom-0 w-full max-w-[460px] p-4 z-50">
-        {data.existing_report ? (
-          <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold py-3.5 rounded-2xl text-center text-sm">
-            ✓ Laporan sudah dikirim
-          </div>
-        ) : data.can_report === false ? (
-          <p className="bg-amber-50 text-amber-800 rounded-2xl p-3 text-sm text-center">{data.blocked_reason}</p>
-        ) : (
-          <button onClick={() => navigate(`/app/tugas/${accountId}/laporan`)}
-            className="brand-action w-full font-semibold py-3.5 rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            data-testid="detail-tugas-buat-laporan-button">
-            <FileText className="w-5 h-5" /> Buat Laporan
-          </button>
-        )}
+        <button onClick={() => navigate("/app/riwayat")} className="w-full rounded-2xl bg-blue-50 border border-blue-200 text-blue-800 p-3 text-sm font-semibold" data-testid="detail-tugas-riwayat-laporan">{data.existing_report ? "Lihat laporan admin & pembayaran tim" : "Laporan dibuat oleh admin. Lihat riwayat laporan tim"}</button>
       </div>
     </div>
   );

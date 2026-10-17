@@ -184,6 +184,24 @@ def test_malformed_signed_token_returns_401(local_api, payload, route):
     db.users.find_one.assert_not_called()
 
 
+
+def configure_admin_report(db, monkeypatch):
+    assignment = {"id": "assignment", "company_id": "company-a", "account_id": "unit", "status": "AKTIF", "officer_id": "officer"}
+    db.assignments.find_one.return_value = assignment
+    db.assignments.find_one_and_update.return_value = assignment
+    db.accounts.find_one.return_value = {"id": "unit", "nama_debitur": "Debitur"}
+    db.assignment_letters.find_one.return_value = {"id": "letter", "document_snapshot": {"officers": [{"name": "Officer"}]}}
+    monkeypatch.setattr(server, "put_object", Mock(side_effect=lambda path, *_: {"path": path}))
+
+
+def admin_report_data(**extra):
+    import uuid
+    return {"assignment_id": "assignment", "client_report_id": str(uuid.uuid4()), "payment_amount": "500000", "status": "TIDAK_DITEMUKAN", "catatan": "Catatan laporan admin", **extra}
+
+
+def admin_report_photos():
+    return {"photos": ("evidence.png", login_background_png(), "image/png")}
+
 @pytest.mark.parametrize("coordinates", [
     {"latitude": "abc", "longitude": "106"},
     {"latitude": "nan", "longitude": "106"},
@@ -194,30 +212,29 @@ def test_malformed_signed_token_returns_401(local_api, payload, route):
     {"lokasi_alasan": "x"},
 ])
 def test_invalid_location_is_400_not_500(local_api, coordinates):
-    api, db = local_api
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF"}
-    response = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "TIDAK_DITEMUKAN", "catatan": "Catatan kunjungan lengkap", **coordinates})
-    assert response.status_code == 400
-    db.field_reports.insert_one.assert_not_called()
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        server.validate_report_location(coordinates.get("latitude"), coordinates.get("longitude"), coordinates.get("lokasi_alasan"))
 
 
 @pytest.mark.parametrize("location", [{"latitude": "0", "longitude": "0"}, {"lokasi_alasan": "GPS tidak tersedia"}])
-def test_valid_report_saved(local_api, location):
+def test_valid_report_saved(local_api, location, monkeypatch):
     api, db = local_api
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF"}
-    response = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "TIDAK_DITEMUKAN", "catatan": "Catatan kunjungan lengkap", **location})
+    configure_admin_report(db, monkeypatch)
+    response = api.post("/api/laporan", data=admin_report_data(**location), files=admin_report_photos())
     assert response.status_code == 200
-    assert response.json()["latitude"] == (0 if "latitude" in location else None)
+    assert response.json()["latitude"] is None
+    assert response.json()["payment_status"] == "MENUNGGU_PEMBAYARAN"
     db.field_reports.insert_one.assert_awaited_once()
 
 
-def test_reviewed_report_cannot_be_resubmitted(local_api):
+def test_reviewed_report_cannot_be_resubmitted(local_api, monkeypatch):
     api, db = local_api
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF"}
-    db.field_reports.find_one.return_value = {"report_status": "REVIEWED"}
-    response = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "TIDAK_DITEMUKAN", "catatan": "Catatan kunjungan lengkap", "latitude": "0", "longitude": "0"})
-    assert response.status_code == 400
-    assert db.field_reports.find_one.call_args.args[0] == {"assignment_id": "assignment"}
+    configure_admin_report(db, monkeypatch)
+    db.field_reports.find_one.return_value = {"id": "existing", "report_status": "REVIEWED"}
+    response = api.post("/api/laporan", data=admin_report_data(), files=admin_report_photos())
+    assert response.status_code == 409
+    assert db.field_reports.find_one.call_args.args[0] == {"company_id": "company-a", "assignment_id": "assignment"}
     db.field_reports.insert_one.assert_not_called()
 
 
@@ -258,29 +275,26 @@ def test_new_officer_requires_password(local_api):
 
 def test_unknown_report_status_rejected(local_api):
     api, db = local_api
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF"}
-    response = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "UNKNOWN", "catatan": "Catatan kunjungan lengkap", "latitude": "0", "longitude": "0"})
+    response = api.post("/api/laporan", data=admin_report_data(status="UNKNOWN"), files=admin_report_photos())
     assert response.status_code == 400
     db.field_reports.insert_one.assert_not_called()
 
 
 def test_fake_image_rejected_before_storage(local_api, monkeypatch):
     api, db = local_api
-    upload = Mock()
-    monkeypatch.setattr(server, "put_object", upload)
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF"}
-    response = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "UNIT_DITEMUKAN", "catatan": "Catatan kunjungan lengkap", "latitude": "0", "longitude": "0"}, files={"photos": ("fake.jpg", b"not an image", "image/jpeg")})
+    configure_admin_report(db, monkeypatch)
+    response = api.post("/api/laporan", data=admin_report_data(), files={"photos": ("fake.jpg", b"not an image", "image/jpeg")})
     assert response.status_code == 400
-    upload.assert_not_called()
+    server.put_object.assert_not_called()
     db.field_reports.insert_one.assert_not_called()
 
 
-def test_concurrent_duplicate_submission_is_400(local_api):
+def test_concurrent_duplicate_submission_is_conflict(local_api, monkeypatch):
     api, db = local_api
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF"}
+    configure_admin_report(db, monkeypatch)
     db.field_reports.insert_one.side_effect = DuplicateKeyError("submission_key collision")
-    response = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "TIDAK_DITEMUKAN", "catatan": "Catatan kunjungan lengkap", "latitude": "0", "longitude": "0"})
-    assert response.status_code == 400
+    response = api.post("/api/laporan", data=admin_report_data(), files=admin_report_photos())
+    assert response.status_code == 409
     db.accounts.update_one.assert_not_called()
 
 
@@ -289,12 +303,13 @@ def test_concurrent_duplicate_submission_is_400(local_api):
     {"valid_until": "2000-01-01"},
     {"valid_from": "invalid"},
 ])
-def test_report_outside_assignment_dates_rejected(local_api, dates):
+def test_admin_can_record_historical_assignment_report(local_api, dates, monkeypatch):
     api, db = local_api
-    db.assignments.find_one.return_value = {"id": "assignment", "account_id": "unit", "status": "AKTIF", **dates}
-    response = api.post("/api/laporan", data={"assignment_id": "assignment", "account_id": "unit", "status": "TIDAK_DITEMUKAN", "catatan": "Catatan kunjungan lengkap", "latitude": "0", "longitude": "0"})
-    assert response.status_code == 400
-    db.field_reports.insert_one.assert_not_called()
+    configure_admin_report(db, monkeypatch)
+    db.assignments.find_one.return_value.update(dates)
+    response = api.post("/api/laporan", data=admin_report_data(), files=admin_report_photos())
+    assert response.status_code == 200
+    assert response.json()["payment_status"] == "MENUNGGU_PEMBAYARAN"
 
 
 @pytest.mark.parametrize("route", ["/api/public/verify/code", "/api/public/surat-tugas/letter"])

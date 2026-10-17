@@ -28,7 +28,6 @@ const PetugasLayout = lazy(() => import("@/pages/petugas/PetugasLayout"));
 const Beranda = lazy(() => import("@/pages/petugas/Beranda"));
 const Tugas = lazy(() => import("@/pages/petugas/Tugas"));
 const DetailTugas = lazy(() => import("@/pages/petugas/DetailTugas"));
-const BuatLaporan = lazy(() => import("@/pages/petugas/BuatLaporan"));
 const Riwayat = lazy(() => import("@/pages/petugas/Riwayat"));
 const Profil = lazy(() => import("@/pages/petugas/Profil"));
 const ChatInbox = lazy(() => import("@/pages/ChatInbox"));
@@ -86,7 +85,7 @@ export default function App() {
             <Route index element={<Beranda />} />
             <Route path="tugas" element={<Tugas />} />
             <Route path="tugas/:accountId" element={<DetailTugas />} />
-            <Route path="tugas/:accountId/laporan" element={<BuatLaporan />} />
+            <Route path="tugas/:accountId/laporan" element={<Navigate to="/app/riwayat" replace />} />
             <Route path="riwayat" element={<Riwayat />} />
             <Route path="profil" element={<Profil />} />
             <Route path="chat" element={<ChatInbox />} />

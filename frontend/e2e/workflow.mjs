@@ -12,12 +12,18 @@ const origin=`https://localhost:${fixture.web_port}`;
 const apiURL=new URL(fixture.api_url);
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'};
 let dropNextChatAcknowledgement=false;
+let dropNextReportAcknowledgement=false,dropNextPaymentAcknowledgement=false;
 const server=https.createServer({key:fs.readFileSync(fixture.key),cert:fs.readFileSync(fixture.cert)},(incoming,outgoing)=>{
   if(incoming.url.startsWith('/api/')){
-    const drop=dropNextChatAcknowledgement&&incoming.method==='POST'&&/^\/api\/chat\/[^/]+\/messages$/.test(incoming.url);
-    if(drop)dropNextChatAcknowledgement=false;
+    const chatDrop=dropNextChatAcknowledgement&&incoming.method==='POST'&&/^\/api\/chat\/[^/]+\/messages$/.test(incoming.url);
+    const reportDrop=dropNextReportAcknowledgement&&incoming.method==='POST'&&incoming.url==='/api/laporan';
+    const paymentDrop=dropNextPaymentAcknowledgement&&incoming.method==='POST'&&/^\/api\/laporan\/[^/]+\/payment$/.test(incoming.url);
+    const drop=chatDrop||reportDrop||paymentDrop;
+    if(chatDrop)dropNextChatAcknowledgement=false;
+    if(reportDrop)dropNextReportAcknowledgement=false;
+    if(paymentDrop)dropNextPaymentAcknowledgement=false;
     const upstream=http.request({hostname:apiURL.hostname,port:apiURL.port,path:incoming.url,method:incoming.method,headers:incoming.headers},response=>{
-      if(drop&&response.statusCode===200){response.resume();response.on('end',()=>{outgoing.writeHead(502,{'content-type':'application/json'});outgoing.end(JSON.stringify({detail:'QA chat acknowledgement lost'}));});}
+      if(drop&&response.statusCode===200){response.resume();response.on('end',()=>{outgoing.writeHead(502,{'content-type':'application/json'});outgoing.end(JSON.stringify({detail:chatDrop?'QA chat acknowledgement lost':'QA report/payment acknowledgement lost'}));});}
       else{outgoing.writeHead(response.statusCode,response.headers);response.pipe(outgoing);}
     });
     upstream.on('error',()=>{outgoing.writeHead(503);outgoing.end();});incoming.pipe(upstream);return;
@@ -91,14 +97,20 @@ try {
   await op.route(chatReadURL,route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'QA chat read failure'})}));
   await op.reload();await op.getByRole('alert').filter({hasText:'QA chat read failure'}).waitFor();assert.equal(await op.getByTestId('chat-composer').count(),0);
   await op.unroute(chatReadURL);await op.getByRole('button',{name:'Coba lagi',exact:true}).click();await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
-  await op.goto(origin+'/app/tugas/'+unit.id+'/laporan');await op.getByTestId('laporan-status-UNIT_DITEMUKAN').click();await op.getByTestId('laporan-catatan-input').fill('Kunjungan browser QA dengan foto dan GPS');await op.getByText('Terdeteksi',{exact:true}).waitFor();await op.getByTestId('laporan-next-button').click();await op.getByTestId('laporan-photo-input').setInputFiles(fixture.image);await op.getByTestId('laporan-photo-preview-0').waitFor();await op.getByTestId('laporan-next-button').click();
-  // Simulate a lost acknowledgement after the API has committed the report.
-  await op.route('**/api/laporan',async route=>{const response=await route.fetch();assert.equal(response.status(),200);await route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({detail:'QA acknowledgement lost'})});});
-  await op.getByTestId('petugas-submit-report-button').click();await op.getByTestId('laporan-done-home').waitFor();await op.unroute('**/api/laporan');
-  const reports=await api('GET','laporan');const report=reports.find(item=>item.account_id===unit.id);assert(report);
-  await ap.goto(origin+'/admin/laporan/'+report.id);await ap.getByTestId('laporan-photo-0').locator('img').evaluate(image=>image.decode());await ap.getByTestId('laporan-review-input').fill('Review browser QA');pending=ap.waitForResponse(response=>response.url().endsWith('/review')&&response.request().method()==='PATCH');await ap.getByTestId('laporan-review-save').click();assert.equal((await pending).status(),200);
-  await op.goto(origin+'/app/riwayat');await op.getByText('Review browser QA').waitFor();await op.locator('img[src*="/api/files/"]').first().evaluate(image=>image.decode());
-  await tp.goto(origin+'/app/riwayat');await tp.getByText('Review browser QA').waitFor();await tp.locator('img[src*="/api/files/"]').first().evaluate(image=>image.decode());
+  await op.goto(origin+'/app/tugas/'+unit.id+'/laporan');await op.waitForURL('**/app/riwayat');assert.equal(await op.getByTestId('petugas-submit-report-button').count(),0);
+  await ap.goto(origin+'/admin/laporan');await ap.getByTestId('laporan-create-button').click();await ap.getByTestId('admin-report-assignment').click();await ap.getByRole('option').filter({hasText:letter.document_number}).click();
+  await ap.getByTestId('admin-report-photos').setInputFiles([fixture.image,fixture.image]);await ap.getByTestId('admin-report-amount').fill('750000');await ap.getByTestId('admin-report-notes').fill('Bukti kegiatan lapangan dicatat oleh admin');
+  dropNextReportAcknowledgement=true;await ap.getByTestId('admin-report-submit').click();await ap.waitForURL('**/admin/laporan/*');
+  await ap.getByTestId('laporan-photo-0').locator('img').evaluate(image=>image.decode());await ap.getByTestId('laporan-photo-1').locator('img').evaluate(image=>image.decode());
+  assert((await ap.getByTestId('payment-amount').innerText()).includes('750.000'));assert((await ap.getByTestId('payment-status').first().innerText()).includes('Menunggu Pembayaran'));
+  const reports=await api('GET','laporan');const report=reports.find(item=>item.account_id===unit.id);assert(report);assert.equal(report.payment_status,'MENUNGGU_PEMBAYARAN');assert.equal(reports.filter(item=>item.assignment_id===letter.assignment_id).length,1);
+  await ap.getByTestId('laporan-review-input').fill('Review browser QA');pending=ap.waitForResponse(response=>response.url().endsWith('/review')&&response.request().method()==='PATCH');await ap.getByTestId('laporan-review-save').click();assert.equal((await pending).status(),200);
+  for(const page of [op,tp]) {await page.goto(origin+'/app/riwayat');const card=page.getByTestId('riwayat-card-'+report.id);await card.getByText('Review browser QA').waitFor();assert((await card.getByTestId('payment-status').innerText()).includes('Menunggu Pembayaran'));await card.locator('img[src*="/api/files/"]').first().evaluate(image=>image.decode());}
+  await ap.goto(origin+'/admin/laporan');await ap.getByTestId('laporan-pay-'+report.id).click();await ap.getByTestId('payment-proof-input').setInputFiles(fixture.pdf);
+  dropNextPaymentAcknowledgement=true;await ap.getByTestId('payment-save').click();await ap.getByTestId('payment-proof-link').waitFor();
+  const paid=await api('GET','laporan/'+report.id);assert.equal(paid.payment_status,'SELESAI');assert.equal(paid.payment_amount,'750000.00');assert.equal(paid.photos.length,2);
+  for(const page of [op,tp]) {await page.goto(origin+'/app/riwayat');const card=page.getByTestId('riwayat-card-'+report.id);await card.getByTestId('payment-proof-link').waitFor();assert.equal(await card.getByTestId('payment-status').innerText(),'Selesai');const href=await card.getByTestId('payment-proof-link').getAttribute('href');assert.equal((await page.request.get(origin+href)).status(),200);}
+  await ap.screenshot({path:path.join(path.dirname(fixture.print_pdf),'admin-report-paid.png'),fullPage:true});await op.screenshot({path:path.join(path.dirname(fixture.print_pdf),'officer-report-paid.png'),fullPage:true});
   await api('PATCH','surat-tugas/'+letter.id+'/status',{status:'selesai'});
   await op.goto(origin+'/app/chat/'+letter.assignment_id);await op.getByTestId('chat-read-only').waitFor();assert.equal(await op.getByTestId('chat-composer').count(),0);await op.getByText('Arahan admin melalui chat',{exact:true}).waitFor();
   const settings={...await api('GET','company'),nama:'PT Reborn Browser QA',alamat:'Jl. Kantor Browser QA 12',email:'office@browser-qa.example.com',telepon:'021-987654'};
@@ -124,7 +136,7 @@ try {
   await ap.route('**/api/dashboard/stats',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'QA dashboard failure'})}));await ap.goto(origin+'/admin');await ap.getByRole('alert').filter({hasText:'QA dashboard failure'}).waitFor();assert.equal(await ap.getByTestId('dashboard-stats').count(),0);await ap.unroute('**/api/dashboard/stats');await ap.getByRole('button',{name:'Coba lagi',exact:true}).click();await ap.getByTestId('dashboard-stats').waitFor();
   await op.goto(origin+'/app/profil');await op.getByTestId('petugas-logout-button').click();await op.waitForURL('**/login');assert.equal((await officer.request.get(origin+'/api/auth/me')).status(),401);
   assert.equal(errors.length,0);
-  console.log('PASS HTTPS UI: assignment, chat photo/document/location, chat lost acknowledgement retry, closed chat history, photo/GPS, report lost acknowledgement, read failure/retry, review/history, print, secure cookie and logout.');
+  console.log('PASS HTTPS UI: assignment, chat photo/document/location, chat lost acknowledgement retry, closed chat history, admin report/team payment, report/payment lost acknowledgement, read failure/retry, review/history, print, secure cookie and logout.');
 } finally {
   await direct.dispose();await browser.close();await new Promise(resolve=>server.close(resolve));
 }
