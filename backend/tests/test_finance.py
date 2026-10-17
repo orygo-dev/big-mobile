@@ -83,3 +83,21 @@ def test_pdf_keeps_long_notes_across_pages():
     data['items'][0]['description']=('catatan panjang '*240)+' AKHIR CATATAN'
     document=PdfReader(BytesIO(render_pdf(data,'Perusahaan','Semua transaksi')))
     assert 'AKHIR CATATAN' in ' '.join(page.extract_text() for page in document.pages)
+
+
+def test_native_query_parameters_and_literal_percent_are_driver_safe():
+    import asyncio
+    import pymysql
+    from database import Database
+    db=Database('mysql://audit:unused@127.0.0.1/audit_unit')
+    connection=pymysql.connect(defer_connect=True);connection.server_status=0
+    cursor=connection.cursor()
+    async def execute(sql,parameters,fetch=False):
+        rendered=cursor.mogrify(sql,parameters)
+        assert "LIKE '/api/files/%'" in rendered
+        assert "g_company_id='company-test'" in rendered
+        return []
+    async def transaction(operation):return await operation()
+    db.execute=execute;db.run_transaction=transaction
+    result=asyncio.run(db.finance_report('company-test','2026-10-16T17:00:00+00:00','2026-10-17T17:00:00+00:00','',1,50))
+    assert result=={'rows':[],'totals':{},'count':0}

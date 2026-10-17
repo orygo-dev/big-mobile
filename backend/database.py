@@ -285,7 +285,7 @@ class Database:
         sources=[];parameters=[]
         for source,table,date_field,condition in (
             ('PEMASUKAN','bm_documents','g_created_at',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.kind'))='leasing_payment'"),
-            ('PENGELUARAN','bm_field_reports',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_recorded_at'))","JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_status'))='SELESAI' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_proof.url')) LIKE '/api/files/%'")
+            ('PENGELUARAN','bm_field_reports',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_recorded_at'))","JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_status'))='SELESAI' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_proof.url')) LIKE '/api/files/%%'")
         ):
             if kind and kind!=source:continue
             where=f'g_company_id=%s AND {condition} AND {date_field} IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(payload,\'$.payment_amount\')) IS NOT NULL'
