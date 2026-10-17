@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/constants";
 import { StatusBadge } from "@/components/StatusBadge";
 import { REPORT_STATUS } from "@/lib/constants";
 import EmptyState from "@/components/EmptyState";
+import {rupiah} from '@/components/ReportPayment';
 import {
   FileText, Car, ClipboardCheck, CheckCircle2, XCircle, Clock, CalendarDays, Activity, Eye,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const STAT_CONF = [
 export default function Dashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState({});
+  const [finance,setFinance]=useState({});
   const [activity, setActivity] = useState([]);
   const [chart, setChart] = useState([]);
 
@@ -31,8 +33,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const load = useCallback(() => {
     setLoading(true); setError("");
-    Promise.all([api.get("/dashboard/stats"),api.get("/dashboard/recent-activity"),api.get("/dashboard/reports-7days")])
-      .then(([counts,recent,days]) => {setStats(counts.data);setActivity(recent.data);setChart(days.data);})
+    Promise.all([api.get("/dashboard/stats"),api.get("/dashboard/recent-activity"),api.get("/dashboard/reports-7days"),api.get('/dashboard/finance')])
+      .then(([counts,recent,days,money]) => {setStats(counts.data);setActivity(recent.data);setChart(days.data);setFinance(money.data);})
       .catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
   }, []);
   useEffect(() => {load();}, [load]);
@@ -46,6 +48,7 @@ export default function Dashboard() {
         <button onClick={() => navigate('/admin/chat')} className="mt-3 rounded-xl bg-white/20 px-3 py-2 text-sm font-semibold">Buka kotak masuk chat</button>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">{[['income','Pemasukan Leasing Bulan Ini','bg-emerald-50 border-emerald-200 text-emerald-800'],['expense','Pembayaran Petugas Bulan Ini','bg-orange-50 border-orange-200 text-orange-800'],['profit','Profit Bulan Ini','bg-blue-50 border-blue-200 text-blue-800']].map(([key,label,color])=><div key={key} className={`rounded-2xl border p-5 ${color}`}><p className="text-sm font-semibold">{label}</p><p className="text-2xl font-bold mt-2 break-words" data-testid={`dashboard-finance-${key}`}>{loading?'—':rupiah(finance[key]??'0')}</p><p className="text-xs mt-2">Periode {finance.month||'bulan berjalan'} · WIB</p></div>)}</div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" data-testid="dashboard-stats">
         {STAT_CONF.map((s) => (
           <div key={s.key} className={`brand-panel p-4 sm:p-5 flex items-center justify-between gap-3 hover:shadow-md transition-all dashboard-stat dashboard-stat-${s.tone}`}>

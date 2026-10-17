@@ -59,6 +59,8 @@ try {
   assert.equal(await ap.getByTestId('penugasan-selected-officers').getByRole('button',{name:/Hapus/}).count(),2);
   await ap.screenshot({path:path.join(path.dirname(fixture.print_pdf),'team-assignment-form.png'),fullPage:true});
   let pending=ap.waitForResponse(response=>response.url().endsWith('/api/penugasan')&&response.request().method()==='POST');await ap.getByTestId('penugasan-submit-button').click();const assigned=await pending;assert.equal(assigned.status(),200);const letter=await assigned.json();
+  assert.equal(letter.status,'menunggu_approval');
+  const approval=await direct.post('penugasan/'+letter.assignment_id+'/approve',{headers:{Authorization:'Bearer '+fixture.owner_token}});assert.equal(approval.status(),200);
   assert.equal(letter.petugas_count,2);await ap.getByRole('button',{name:'Tutup',exact:true}).click();
   await ap.getByTestId('penugasan-officer-count-'+letter.id).waitFor();assert.equal(await ap.getByTestId('penugasan-officer-count-'+letter.id).innerText(),'2 Petugas');
   await tp.goto(origin+'/app/tugas/'+unit.id);await tp.getByTestId('detail-tugas-surat-penugasan').click();

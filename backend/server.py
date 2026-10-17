@@ -231,6 +231,8 @@ def task_availability(assignment, sk=None, client_doc=None):
     reason = ""
     if assignment.get("status") != ASSIGNMENT_ACTIVE:
         reason = "Penugasan tidak aktif"
+    elif assignment.get("approval_required") and assignment.get("approval_status") != "APPROVED":
+        reason = "Menunggu approval owner"
     elif start and start > today:
         reason = f"Penugasan baru dapat dikerjakan mulai {start.isoformat()}"
     elif end and end < today:
@@ -307,8 +309,13 @@ async def get_current_user(request: Request) -> dict:
     return user
 
 async def admin_required(user: dict = Depends(get_current_user)) -> dict:
-    if user.get("role") != "admin":
+    if user.get("role") not in {"admin", "owner"}:
         raise HTTPException(status_code=403, detail="Anda tidak memiliki izin mengakses data ini")
+    return user
+
+async def owner_required(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Tindakan ini hanya dapat dilakukan owner")
     return user
 
 async def petugas_required(user: dict = Depends(get_current_user)) -> dict:
@@ -441,6 +448,7 @@ class LoginBackgroundInput(BaseModel):
 
 # Assignment status values (operational)
 ASSIGNMENT_ACTIVE = "AKTIF"
+ASSIGNMENT_PENDING = "MENUNGGU_APPROVAL"
 ASSIGNMENT_TERMINAL = {"SELESAI", "DIBATALKAN", "KEDALUWARSA"}
 # Map letter (document) status -> assignment status
 LETTER_TO_ASSIGNMENT_STATUS = {
@@ -779,7 +787,7 @@ async def list_accounts(
 ):
     q = {"company_id": user["company_id"]}
     if available:
-        occupied = await db.assignments.distinct("account_id", {"company_id": user["company_id"], "status": ASSIGNMENT_ACTIVE})
+        occupied = await db.assignments.distinct("account_id", {"company_id": user["company_id"], "status": {"$in": [ASSIGNMENT_ACTIVE, ASSIGNMENT_PENDING]}})
         q["id"] = {"$nin": occupied}
     if client_id:
         q["client_id"] = client_id
@@ -827,7 +835,7 @@ async def update_account(acc_id: str, data: AccountInput, request: Request, user
     await validate_account_references(data, user["company_id"])
     existing = await db.accounts.find_one({"id": acc_id, "company_id": user["company_id"]})
     if existing and any(existing.get(key) != getattr(data, key) for key in ("client_id", "surat_kuasa_id")):
-        if await db.assignments.find_one({"account_id": acc_id, "company_id": user["company_id"], "status": ASSIGNMENT_ACTIVE}):
+        if await db.assignments.find_one({"account_id": acc_id, "company_id": user["company_id"], "status": {"$in": [ASSIGNMENT_ACTIVE, ASSIGNMENT_PENDING]}}):
             raise HTTPException(status_code=409, detail="Tutup penugasan aktif sebelum mengganti klien atau Surat Kuasa unit")
     if existing:
         # Freeze legacy reports before master data changes, including ordinary name/address edits.
@@ -954,7 +962,7 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
         raise HTTPException(status_code=404, detail="Unit/akun tidak ditemukan")
 
     # Rule: a unit may only have ONE active assignment at a time.
-    active = await db.assignments.find_one({"account_id": data.account_id, "status": ASSIGNMENT_ACTIVE})
+    active = await db.assignments.find_one({"account_id": data.account_id, "company_id": user["company_id"], "status": {"$in": [ASSIGNMENT_ACTIVE, ASSIGNMENT_PENDING]}})
     if active:
         raise HTTPException(
             status_code=400,
@@ -1014,7 +1022,7 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
         "account_id": data.account_id, "officer_id": data.petugas_id,
         "officer_ids": data.petugas_ids,
         "power_of_attorney_id": sk_id, "client_id": client_id,
-        "status": ASSIGNMENT_ACTIVE,
+        "status": ASSIGNMENT_PENDING, "approval_required": True, "approval_status": "PENDING",
         "valid_from": valid_from, "valid_until": valid_until,
         "note": data.catatan or "",
         "assignment_number": assignment_number,
@@ -1031,7 +1039,8 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
         "petugas_ids": data.petugas_ids,
         "account_id": data.account_id, "account_ids": [data.account_id],
         "tanggal": valid_from, "masa_berlaku": valid_until, "catatan": data.catatan or "",
-        "status": "aktif", "document_status": "ACTIVE", "template_version": "v1",
+        "status": "menunggu_approval", "document_status": "PENDING_APPROVAL", "template_version": "v1",
+        "approval_required": True, "approval_status": "PENDING",
         "generated_by": user["name"], "generated_at": now_iso(),
         "created_at": now_iso(), "updated_at": now_iso(),
     }
@@ -1088,10 +1097,13 @@ async def update_st_status(lid: str, data: StatusUpdate, request: Request, user:
         raise HTTPException(status_code=404, detail="Surat Tugas tidak ditemukan")
     if letter.get("status") == data.status:
         return await enrich_letter(clean(letter))
-    if letter.get("status") != "aktif":
+    pending = letter.get("approval_required") and letter.get("approval_status") != "APPROVED"
+    if pending and data.status != "dibatalkan":
+        raise HTTPException(status_code=403, detail="Penugasan harus disetujui owner terlebih dahulu")
+    if letter.get("status") not in {"aktif", "menunggu_approval"}:
         raise HTTPException(status_code=400, detail="Status Surat Tugas yang sudah berakhir tidak dapat diubah. Buat penugasan baru.")
     document_status = {"aktif": "ACTIVE", "selesai": "COMPLETED", "dibatalkan": "CANCELLED", "kedaluwarsa": "EXPIRED"}[data.status]
-    changed = await db.assignment_letters.update_one({"id": lid, "company_id": user["company_id"], "status": "aktif"}, {"$set": {"status": data.status, "document_status": document_status, "updated_at": now_iso()}})
+    changed = await db.assignment_letters.update_one({"id": lid, "company_id": user["company_id"], "status": letter["status"]}, {"$set": {"status": data.status, "document_status": document_status, "updated_at": now_iso()}})
     if changed.matched_count == 0:
         raise HTTPException(status_code=409, detail="Status tugas telah berubah. Muat ulang data.")
     # Keep the operational assignment in sync (assignment is the primary object)
@@ -1117,6 +1129,8 @@ async def surat_tugas_qr(lid: str):
     letter = await db.assignment_letters.find_one({"id": lid}, {"_id": 0})
     if not letter:
         raise HTTPException(status_code=404, detail="Surat Tugas tidak ditemukan")
+    if letter.get("approval_required") and letter.get("approval_status") != "APPROVED":
+        raise HTTPException(status_code=403, detail="Surat belum disetujui owner")
     code = letter.get("generate_code")
     verify_url = f"{APP_BASE_URL}/verify/surat-tugas/{code}" if code else f"{APP_BASE_URL}/verifikasi/{lid}"
     img = qrcode.make(verify_url)
@@ -1145,7 +1159,7 @@ async def public_verify(lid: str):
         return {"valid": False, "message": "Surat Tugas tidak ditemukan"}
     petugas = await db.users.find_one({"id": letter["petugas_id"]}, {"_id": 0, "password_hash": 0})
     company = await db.companies.find_one({"id": letter["company_id"]}, {"_id": 0})
-    valid = letter["status"] == "aktif" and not letter_is_expired(letter)
+    valid = letter["status"] == "aktif" and not letter_is_expired(letter) and (not letter.get("approval_required") or letter.get("approval_status") == "APPROVED")
     names = await public_team_names(letter)
     return {
         "valid": valid,
@@ -1216,7 +1230,7 @@ async def build_document_data(letter: dict, generated_by_name: str = "") -> dict
             "director_name": company.get("director_name", ""),
             "director_position": company.get("director_position", "DIREKTUR"),
             "company_code": company.get("company_code", ""), "logo": company.get("logo", ""),
-            "director_signature": company.get("director_signature", ""),
+            "director_signature": "" if letter.get("approval_required") and letter.get("approval_status") != "APPROVED" else company.get("director_signature", ""),
         },
         "finance": {"name": client_doc.get("nama_perusahaan", "")},
         "officers": officers,
@@ -1243,13 +1257,14 @@ async def build_document_data(letter: dict, generated_by_name: str = "") -> dict
 
 
 async def get_document_payload(letter: dict) -> dict:
+    import copy
     template = await db.document_templates.find_one(
         {"company_id": letter["company_id"], "version": letter.get("template_version", "v1")}, {"_id": 0})
     if not template:
         from seed import _default_template
         template = _default_template(letter["company_id"])
     if letter.get("document_snapshot"):
-        data = letter["document_snapshot"]
+        data = copy.deepcopy(letter["document_snapshot"])
     else:
         data = await build_document_data(letter)
     # Letterhead follows current settings; legal snapshots remain untouched.
@@ -1257,16 +1272,23 @@ async def get_document_payload(letter: dict) -> dict:
     signature = data.get("company", {}).get("director_signature")
     if letter.get("document_status", "DRAFT") == "DRAFT" or signature is None:
         signature = (company or {}).get("director_signature", "")
+    pending = letter.get("approval_required") and letter.get("approval_status") != "APPROVED"
+    if pending:
+        signature = ""
+        data.get("company", {}).pop("director_signature", None)
     letterhead = ({"name": company.get("nama", ""), "address": company.get("alamat", ""),
                    "email": company.get("email", ""), "phone": company.get("telepon", ""),
                    "logo": company.get("logo", "")} if company else data.get("company", {}))
     return {
         "letterhead": letterhead,
         "director_signature": signature,
+        "approval_required": letter.get("approval_required", False),
+        "approval_status": letter.get("approval_status"),
         "document_status": letter.get("document_status", "DRAFT"),
-        "is_finalized": letter.get("document_status") in {"ACTIVE", "COMPLETED", "CANCELLED", "EXPIRED"},
+        "is_finalized": not pending and letter.get("document_status") in {"ACTIVE", "COMPLETED", "CANCELLED", "EXPIRED"},
         "template": template, "data": data,
         "letter_id": letter["id"], "st_nomor": letter.get("nomor"),
+        "assignment_id": letter.get("assignment_id"),
         "letter_status": letter.get("status"),
     }
 
@@ -1285,6 +1307,10 @@ async def finalize_document(lid: str, request: Request, user: dict = Depends(adm
     letter = await db.assignment_letters.find_one({"id": lid, "company_id": user["company_id"]})
     if not letter:
         raise HTTPException(status_code=404, detail="Surat Tugas tidak ditemukan")
+    if letter.get("approval_required"):
+        if letter.get("approval_status") != "APPROVED":
+            raise HTTPException(status_code=403, detail="Gunakan approval owner untuk menerbitkan surat ini")
+        return await get_document_payload(letter)
     if letter.get("status") in {"selesai", "dibatalkan", "kedaluwarsa"}:
         raise HTTPException(status_code=400, detail="Surat Tugas yang sudah berakhir tidak dapat diterbitkan ulang")
     if letter.get("document_status") == "ACTIVE":
@@ -1328,6 +1354,8 @@ async def public_verify_code(code: str):
     company = await db.companies.find_one({"id": letter["company_id"]}, {"_id": 0}) or {}
     officer = await db.users.find_one({"id": letter["petugas_id"]}, {"_id": 0, "password_hash": 0}) or {}
     st = letter.get("status")
+    if letter.get("approval_required") and letter.get("approval_status") != "APPROVED":
+        st = "menunggu_approval" if st != "dibatalkan" else st
     if st == "aktif" and letter_is_expired(letter):
         st = "kedaluwarsa"
     status_map = {"aktif": "VALID", "selesai": "VALID", "dibatalkan": "DIBATALKAN", "kedaluwarsa": "KEDALUWARSA"}
@@ -1363,6 +1391,8 @@ async def my_assignment_document(lid: str, user: dict = Depends(petugas_required
     letter = await db.assignment_letters.find_one(member_query({"id": lid, "company_id": user["company_id"]}, user["id"], "petugas_id"), {"_id": 0})
     if not letter:
         raise HTTPException(status_code=404, detail="Surat tugas tidak ditemukan")
+    if letter.get("approval_required") and letter.get("approval_status") != "APPROVED":
+        raise HTTPException(status_code=403, detail="Surat belum disetujui owner")
     return await get_document_payload(letter)
 
 @api_router.get("/my/tugas")
@@ -1729,12 +1759,12 @@ async def serve_file(path: str, user: dict = Depends(get_current_user)):
     record = await db.report_photos.find_one({"storage_path": path})
     if record:
         owner_query = {"id": record["report_id"], "company_id": user["company_id"]}
-        if user.get("role") != "admin":
+        if user.get("role") not in {"admin", "owner"}:
             owner_query = member_query(owner_query, user["id"], "petugas_id")
         owner = await db.field_reports.find_one(owner_query)
     else:
         record = await db.documents.find_one({"storage_path": path, "company_id": user["company_id"]})
-        owner = record if user.get("role") == "admin" else None
+        owner = record if user.get("role") in {"admin", "owner"} else None
         if record and user.get("role") == "petugas" and record.get("kind") == "surat_kuasa":
             owner = await db.assignments.find_one(member_query({"company_id": user["company_id"], "power_of_attorney_id": record.get("ref_id"), "status": ASSIGNMENT_ACTIVE}, user["id"]))
     if not record or not owner:
@@ -1753,11 +1783,13 @@ import admin_reports
 import leasing_payments
 import finance
 import pks
+import owner_workflow
 import sys
 admin_reports.register(api_router, sys.modules[__name__])
 leasing_payments.register(api_router, sys.modules[__name__])
 finance.register(api_router, sys.modules[__name__])
 pks.register(api_router, sys.modules[__name__])
+owner_workflow.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 
@@ -1794,7 +1826,7 @@ async def migrate_assignments_non_destructive():
             if "power_of_attorney_id" not in existing and letter.get("surat_kuasa_id"):
                 patch["power_of_attorney_id"] = letter["surat_kuasa_id"]
             if "status" not in existing:
-                patch["status"] = LETTER_TO_ASSIGNMENT_STATUS.get(letter.get("status", "aktif"), "AKTIF")
+                patch["status"] = {**LETTER_TO_ASSIGNMENT_STATUS,"menunggu_approval":ASSIGNMENT_PENDING}.get(letter.get("status", "aktif"), "AKTIF")
             if "assignment_number" not in existing:
                 patch["assignment_number"] = letter.get("nomor") or letter.get("document_number")
             if patch:
@@ -1808,7 +1840,8 @@ async def migrate_assignments_non_destructive():
             "account_id": account_ids[0], "officer_id": letter.get("petugas_id"),
             "officer_ids": member_ids(letter, "petugas_id"),
             "power_of_attorney_id": letter.get("surat_kuasa_id"), "client_id": letter.get("client_id"),
-            "status": LETTER_TO_ASSIGNMENT_STATUS.get(letter.get("status", "aktif"), "AKTIF"),
+            "status": {**LETTER_TO_ASSIGNMENT_STATUS,"menunggu_approval":ASSIGNMENT_PENDING}.get(letter.get("status", "aktif"), "AKTIF"),
+            "approval_required": letter.get("approval_required", False), "approval_status": letter.get("approval_status"),
             "valid_from": letter.get("tanggal"), "valid_until": letter.get("masa_berlaku"),
             "note": letter.get("catatan", ""),
             "assignment_number": letter.get("nomor") or letter.get("document_number"),

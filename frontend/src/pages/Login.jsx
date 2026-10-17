@@ -28,7 +28,7 @@ export default function Login() {
     try {
       const u = await login(email.trim(), password);
       toast.success(`Selamat datang, ${u.name}`);
-      navigate(u.role === "admin" ? "/admin" : "/app", { replace: true });
+      navigate(["admin", "owner"].includes(u.role) ? "/admin" : "/app", { replace: true });
     } catch (err) {
       setError(errMsg(err));
     } finally {

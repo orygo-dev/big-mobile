@@ -21,7 +21,7 @@ export function messageId() {
 
 export default function AssignmentChat() {
   const { assignmentId } = useParams(), { user } = useAuth();
-  const base = user.role === 'admin' ? '/admin' : '/app';
+  const base = ['admin','owner'].includes(user.role) ? '/admin' : '/app';
   const [thread, setThread] = useState(null), [messages, setMessages] = useState([]), [older, setOlder] = useState(false);
   const [text, setText] = useState(''), [files, setFiles] = useState([]), [location, setLocation] = useState(null);
   const [error, setError] = useState(''), [sendError, setSendError] = useState(''), [busy, setBusy] = useState(false), [gpsBusy, setGpsBusy] = useState(false);
@@ -102,7 +102,7 @@ export default function AssignmentChat() {
     } catch (e) { if (mounted.current) setSendError(`${errMsg(e)} Pesan dan lampiran tetap tersedia; tekan kirim untuk mencoba lagi.`); }
     finally { sending.current = false; if (mounted.current) setBusy(false); }
   }
-  return <div className={`p-4 flex flex-col gap-4 ${user.role === 'admin' ? 'h-[calc(100dvh-6rem)] sm:h-[calc(100dvh-7rem)] lg:h-[calc(100dvh-8rem)]' : 'h-[100dvh]'}`}>
+  return <div className={`p-4 flex flex-col gap-4 ${['admin','owner'].includes(user.role) ? 'h-[calc(100dvh-6rem)] sm:h-[calc(100dvh-7rem)] lg:h-[calc(100dvh-8rem)]' : 'h-[100dvh]'}`}>
     <div className="brand-panel rounded-2xl border border-blue-100 p-4"><Link to={`${base}/chat`} className="text-sm text-blue-600 flex items-center gap-1 mb-2"><ArrowLeft size={16} />Kotak masuk</Link><h1 className="font-heading text-lg font-bold text-slate-900">{thread?.account_name || 'Chat penugasan'}</h1><p className="text-xs text-slate-500 break-all">{thread?.number || 'Memuat percakapan…'}</p>{thread && <p className="text-xs text-slate-600 mt-1">{[thread.officer_name, thread.contract_number, thread.license_plate].filter(Boolean).join(' · ')}</p>}<p className="text-xs text-slate-500 mt-1">Pesan koordinasi tidak mengubah status tugas atau laporan.</p></div>
     {error && <div role="alert" className="rounded-xl bg-amber-50 text-sm p-3">{error}<button onClick={() => refresh(!thread)} className="ml-2 text-blue-600">Coba lagi</button></div>}
     {!thread && !error && <Loader2 className="mx-auto text-blue-600 animate-spin" />}
@@ -110,7 +110,7 @@ export default function AssignmentChat() {
     <div ref={pane} className="space-y-3 flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1" aria-label="Percakapan" data-testid="chat-messages">
       {thread && !messages.length && <p className="text-center text-sm text-slate-500 py-6">Belum ada pesan. Mulai koordinasi di sini.</p>}
       {messages.map(message => { const own = message.sender_id === user.id; return <article key={message.id} className={`rounded-2xl p-3 w-fit max-w-[92%] sm:max-w-[640px] border ${own ? 'ml-auto bg-blue-600 border-blue-600 text-white' : 'mr-auto bg-white border-blue-100 text-slate-800'}`} data-testid={`chat-message-${message.id}`}>
-        <p className={`text-xs font-semibold mb-1 ${own ? 'text-blue-100' : 'text-blue-600'}`}>{message.sender_name} · {message.sender_role === 'admin' ? 'Admin' : 'Petugas'}</p>
+        <p className={`text-xs font-semibold mb-1 ${own ? 'text-blue-100' : 'text-blue-600'}`}>{message.sender_name} · {message.sender_role === 'owner' ? 'Owner' : message.sender_role === 'admin' ? 'Admin' : 'Petugas'}</p>
         {message.text && <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>}
         {message.attachments.map(attachment => <a key={attachment.id} href={fileUrl(attachment.url)} target="_blank" rel="noopener noreferrer" className="block mt-2 rounded-xl bg-white/15 p-2 border border-current/10" data-testid={`chat-attachment-${attachment.kind}`}>
           {attachment.kind === 'image' && <img src={fileUrl(attachment.url)} alt={attachment.name} loading="lazy" className="max-h-56 w-full object-contain rounded-lg" />}

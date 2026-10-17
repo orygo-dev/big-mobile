@@ -8,9 +8,17 @@ import EmptyState from "@/components/EmptyState";
 import PenugasanDialog from "@/components/PenugasanDialog";
 import { ClipboardList, Loader2, Plus, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import {useAuth} from '@/context/AuthContext';
 
 export default function Penugasan() {
   const navigate = useNavigate();
+  const {user}=useAuth();
+  const [approving,setApproving]=useState(null);
+  async function approve(letter){
+    if(approving)return;setApproving(letter.id);
+    try{await api.post(`/penugasan/${letter.assignment_id}/approve`);toast.success('Surat tugas disetujui');window.dispatchEvent(new Event('big-mobile-approval-changed'));load();}
+    catch(e){toast.error(errMsg(e));}finally{setApproving(null);}
+  }
   const [letters, setLetters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -57,13 +65,14 @@ export default function Penugasan() {
               <button onClick={() => navigate(`/admin/surat-tugas/${l.id}/dokumen`)} className="mt-4 text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1" data-testid={`penugasan-view-st-${l.id}`}>
                 Lihat Surat Penugasan <ArrowRight className="w-3.5 h-3.5" />
               </button>
-              {l.assignment_id && <button onClick={() => navigate(`/admin/chat/${l.assignment_id}`)} className="mt-3 rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700" data-testid={`penugasan-chat-${l.id}`}>Chat petugas</button>}
+              {user.role==='owner'&&l.status==='menunggu_approval'&&<Button className="mt-3" disabled={!!approving} onClick={()=>approve(l)} data-testid={`penugasan-approve-${l.id}`}>{approving===l.id?'Menyetujui...':'Approve Surat Tugas'}</Button>}
+              {l.assignment_id && l.status!=='menunggu_approval' && <button onClick={() => navigate(`/admin/chat/${l.assignment_id}`)} className="mt-3 rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700" data-testid={`penugasan-chat-${l.id}`}>Chat petugas</button>}
             </div>
           ))}
         </div>
       )}
 
-      <PenugasanDialog open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={() => load()} />
+      <PenugasanDialog open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={() => {load();window.dispatchEvent(new Event('big-mobile-approval-changed'));}} />
     </div>
   );
 }

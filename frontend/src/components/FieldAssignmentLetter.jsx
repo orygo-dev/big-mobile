@@ -11,7 +11,7 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
   const d = doc.data;
   const company = d.company;
   const officers = d.officers?.length ? d.officers : [d.officer];
-  const signature = doc.director_signature ?? company.director_signature;
+  const signature = doc.approval_required && doc.approval_status!=='APPROVED' ? '' : doc.director_signature ?? company.director_signature;
   const finance = d.finance.name || "pemberi kuasa";
   const row = (label, value) => <tr key={label}><td>{label}</td><td>: {value || "-"}</td></tr>;
   return <div className="doc-page field-letter" data-testid="doc-page-1">
@@ -38,6 +38,7 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
       .field-letter .field-footer { border-top: 2px solid #111; margin-top: 8px; padding-top: 4px; font-size: 8px; text-align: center; }
     `}</style>
     <CompanyLetterhead company={doc.letterhead || company} title="SURAT TUGAS" number={d.letter.document_number || doc.st_nomor || "(akan dibuat saat finalisasi)"} />
+    {doc.letter_status==='menunggu_approval'&&<p style={{textAlign:'center',fontWeight:800,color:'#b45309',border:'1px solid #f59e0b',padding:6}} data-testid="approval-draft">DRAFT - MENUNGGU APPROVAL OWNER. BELUM BERLAKU UNTUK PENUGASAN.</p>}
     <p>Yang bertanda tangan di bawah ini:</p>
     <table className="field-details"><tbody>
       {row("Nama", company.director_name)}

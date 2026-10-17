@@ -2,6 +2,7 @@
 import argparse, asyncio, getpass, json, os, secrets, uuid
 from pathlib import Path
 import bcrypt
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 async def preflight(database, client):
@@ -49,18 +50,38 @@ async def bootstrap(database,name,email,company_name):
     await database.run_transaction(commit)
     print('Production administrator created; password was not logged.')
 
+async def bootstrap_owner(database,name,email,admin_email,password=None):
+    administrator=await database.users.find_one({'email':admin_email.strip().lower(),'role':'admin'})
+    if not administrator:raise ValueError('Administrator reference was not found')
+    existing=await database.users.find_one({'email':email.strip().lower()})
+    if existing:
+        if existing.get('role')!='owner' or existing.get('company_id')!=administrator['company_id'] or existing.get('status')!='aktif':
+            raise ValueError('Email is already in use by another account')
+        print('Owner already exists; its password was preserved.');return
+    password=password or getpass.getpass('Password awal owner: ')
+    if len(password)<12 or len(password.encode())>72:raise ValueError('Owner password must contain 12-72 bytes')
+    now=datetime.now(timezone.utc).isoformat()
+    async def commit():
+        await database.users.insert_one({'id':str(uuid.uuid4()),'company_id':administrator['company_id'],'name':name or 'Owner','email':email.strip().lower(),'role':'owner','status':'aktif','token_version':0,'created_at':now,'password_hash':bcrypt.hashpw(password.encode(),bcrypt.gensalt()).decode()})
+    await database.run_transaction(commit)
+    print('Owner created successfully; password was not logged.')
+
 async def main(args):
     import server
     try:
         await server.initialize_database()
         if args.command=='init-db':print('MySQL schema and indexes ready.');return 0
         if args.command=='preflight':return await preflight(server.db,server.db)
+        if args.command=='bootstrap-owner':
+            if not args.email or not args.admin_email:raise ValueError('Owner requires --email and --admin-email')
+            await bootstrap_owner(server.db,args.name,args.email,args.admin_email,os.environ.pop('BOOTSTRAP_OWNER_PASSWORD',None));return 0
         if not all((args.name,args.email,args.company)):raise ValueError('Bootstrap requires --name, --email, --company')
         await bootstrap(server.db,args.name,args.email,args.company);return 0
     finally:await server.db.close()
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['init-db','preflight','bootstrap-admin']);parser.add_argument('--env',type=Path)
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['init-db','preflight','bootstrap-admin','bootstrap-owner']);parser.add_argument('--env',type=Path)
+    parser.add_argument('--admin-email')
     parser.add_argument('--name');parser.add_argument('--email');parser.add_argument('--company');args=parser.parse_args()
     if args.env:load_dotenv(args.env,override=True)
     try:raise SystemExit(asyncio.run(main(args)))

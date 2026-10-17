@@ -120,11 +120,12 @@ export default function SuratPenugasanDoc() {
           </button>
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${finalized ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`} data-testid="doc-status-badge">
-              {finalized ? "ACTIVE / FINALIZED" : "DRAFT / PREVIEW"}
+              {doc.letter_status==='menunggu_approval' ? "MENUNGGU APPROVAL OWNER" : finalized ? "ACTIVE / FINALIZED" : "DRAFT / PREVIEW"}
             </span>
+            {user.role==='owner'&&doc.letter_status==='menunggu_approval'&&<Button disabled={busy} data-testid="doc-approve-button" onClick={async()=>{setBusy(true);try{await api.post(`/penugasan/${doc.assignment_id}/approve`);window.dispatchEvent(new Event('big-mobile-approval-changed'));toast.success('Surat tugas disetujui');await load();}catch(e){toast.error(errMsg(e));}finally{setBusy(false);}}}>Approve Surat Tugas</Button>}
             <Button onClick={() => doPrint("")} variant="outline" className="rounded-xl" data-testid="doc-print-button"><Printer className="w-4 h-4 mr-1" /> Cetak</Button>
             <Button onClick={() => doPrint(".pdf")} className="rounded-xl bg-slate-900 hover:bg-slate-800" data-testid="doc-download-button"><Download className="w-4 h-4 mr-1" /> Download PDF</Button>
-            {!officerView && doc.letter_status === "aktif" && (
+            {!officerView && ['aktif','menunggu_approval'].includes(doc.letter_status) && (
               <Button onClick={cancel} disabled={busy} variant="outline" className="rounded-xl border-rose-200 text-rose-600 hover:bg-rose-50" data-testid="doc-cancel-button"><Ban className="w-4 h-4 mr-1" /> Batalkan</Button>
             )}
           </div>

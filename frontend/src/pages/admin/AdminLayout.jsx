@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { errMsg } from "@/lib/api";
 import ChatUnread from "@/components/ChatUnread";
+import ApprovalBadge from "@/components/ApprovalBadge";
 
 // Sidebar dikelompokkan sesuai information architecture baru.
 // Catatan: route tetap sama (non-destruktif). Item yang akan dibuat pada Fase 2
@@ -75,7 +76,7 @@ export default function AdminLayout() {
                 {group.section}
               </p>
             )}
-            {group.items.map((n) => (
+            {[...group.items,...(group.section==='Pengaturan'&&user?.role==='owner'?[{to:'/admin/pengguna-admin',label:'Pengguna Admin',icon:Users,tid:'owner-admin-users-link'}]:[])].map((n) => (
               <NavLink key={n.to} to={n.to} end={n.end} data-testid={n.tid} onClick={() => setOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -85,6 +86,7 @@ export default function AdminLayout() {
                 <n.icon className="w-[18px] h-[18px] shrink-0" />
                 {n.label}
                 {n.to === '/admin/chat' && <ChatUnread />}
+                {n.to === '/admin/penugasan' && user?.role==='owner' && <ApprovalBadge />}
               </NavLink>
             ))}
           </div>

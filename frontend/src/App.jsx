@@ -23,6 +23,7 @@ const LaporanPetugas = lazy(() => import("@/pages/admin/LaporanPetugas"));
 const PembayaranLeasing = lazy(() => import("@/pages/admin/PembayaranLeasing"));
 const LaporanKeuangan = lazy(() => import("@/pages/admin/LaporanKeuangan"));
 const PKS = lazy(() => import("@/pages/admin/PKS"));
+const PenggunaAdmin = lazy(() => import("@/pages/admin/PenggunaAdmin"));
 const LaporanDetail = lazy(() => import("@/pages/admin/LaporanDetail"));
 const Petugas = lazy(() => import("@/pages/admin/Petugas"));
 const Pengaturan = lazy(() => import("@/pages/admin/Pengaturan"));
@@ -40,7 +41,7 @@ function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading || user === null) return null;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.role === "admin" ? "/admin" : "/app"} replace />;
+  return <Navigate to={["admin", "owner"].includes(user.role) ? "/admin" : "/app"} replace />;
 }
 
 export default function App() {
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="pembayaran-leasing" element={<PembayaranLeasing />} />
             <Route path="keuangan" element={<LaporanKeuangan />} />
             <Route path="pks" element={<PKS />} />
+            <Route path="pengguna-admin" element={<ProtectedRoute role="owner"><PenggunaAdmin /></ProtectedRoute>} />
             <Route path="laporan/:id" element={<LaporanDetail />} />
             <Route path="petugas" element={<Petugas />} />
             <Route path="pengaturan" element={<Pengaturan />} />

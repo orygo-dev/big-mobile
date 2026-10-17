@@ -13,8 +13,8 @@ export default function ProtectedRoute({ role, children }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  if (role && user.role !== role) {
-    return <Navigate to={user.role === "admin" ? "/admin" : "/app"} replace />;
+  if (role && user.role !== role && !(role === "admin" && user.role === "owner")) {
+    return <Navigate to={["admin", "owner"].includes(user.role) ? "/admin" : "/app"} replace />;
   }
   return children;
 }

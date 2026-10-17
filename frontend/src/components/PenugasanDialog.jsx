@@ -90,6 +90,7 @@ export default function PenugasanDialog({ open, onOpenChange, accountId = null, 
                 <CheckCircle2 className="w-8 h-8 text-emerald-600" />
               </div>
               <p className="font-heading font-semibold text-slate-800">Penugasan berhasil dibuat</p>
+              {result.approval_required&&result.approval_status!=='APPROVED'&&<p className="text-sm font-semibold text-amber-700">Menunggu approval owner. Surat belum berlaku dan belum memuat stempel/tanda tangan.</p>}
             </div>
             <div className="bg-slate-50 border border-slate-200 rounded-xl divide-y divide-slate-100 text-sm">
               <div className="flex justify-between px-3 py-2">

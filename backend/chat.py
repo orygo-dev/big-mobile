@@ -91,9 +91,11 @@ def register(router, runtime):
     async def assignment(assignment_id, user):
         query = {"id": assignment_id, "company_id": user["company_id"]}
         if user["role"] == "petugas": query = member_query(query, user["id"])
-        elif user["role"] != "admin": raise HTTPException(403, "Akses chat tidak diizinkan")
+        elif user["role"] not in {"admin", "owner"}: raise HTTPException(403, "Akses chat tidak diizinkan")
         record = await runtime.db.assignments.find_one(query, {"_id": 0})
         if not record: raise HTTPException(404, "Percakapan tidak ditemukan")
+        if user['role']=='petugas' and record.get('approval_required') and record.get('approval_status')!='APPROVED':
+            raise HTTPException(404, "Percakapan belum tersedia sebelum approval owner")
         return record
 
     def public_message(record):
@@ -123,7 +125,7 @@ def register(router, runtime):
 
     @router.get("/chat/unread")
     async def unread_total(user: dict = Depends(runtime.get_current_user)):
-        if user["role"] not in {"admin", "petugas"}: raise HTTPException(403, "Akses chat tidak diizinkan")
+        if user["role"] not in {"admin", "owner", "petugas"}: raise HTTPException(403, "Akses chat tidak diizinkan")
         return {"count": await runtime.db.unread_messages(user)}
 
     @router.get("/chat")
@@ -133,7 +135,7 @@ def register(router, runtime):
             query.pop("$or")
             query["status"] = runtime.ASSIGNMENT_ACTIVE
         if user["role"] == "petugas": query = member_query(query, user["id"])
-        elif user["role"] != "admin": raise HTTPException(403, "Akses chat tidak diizinkan")
+        elif user["role"] not in {"admin", "owner"}: raise HTTPException(403, "Akses chat tidak diizinkan")
         records = await runtime.db.assignments.find(query, {"_id": 0}).sort([("chat_updated_at", -1), ("id", 1)]).skip((page - 1) * limit).to_list(limit + 1)
         items = []
         for record in records[:limit]:

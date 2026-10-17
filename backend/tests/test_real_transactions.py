@@ -19,10 +19,12 @@ def live(tmp_path_factory):
     company='company-'+uuid.uuid4().hex
     password=secrets.token_urlsafe(24)
     users={}
-    for label,role in [('admin','admin'),('officer','petugas'),('other','petugas'),('outsider','petugas'),('foreign','admin')]:
+    for label,role in [('admin','admin'),('owner','owner'),('officer','petugas'),('other','petugas'),('outsider','petugas'),('foreign','admin')]:
         person={'id':uuid.uuid4().hex,'company_id':company if label!='foreign' else 'foreign-company','role':role,'name':'QA '+label,'email':label+'.'+name+'@example.com','status':'aktif','petugas_code':label,'password_hash':bcrypt.hashpw(password.encode(),bcrypt.gensalt()).decode()}
         db.users.insert_one(person);users[label]=person
-    db.companies.insert_one({'id':company,'nama':'Production QA','company_code':'QA','app_name':'BIG Mobile'})
+    import base64
+    signature=io.BytesIO();Image.new('RGB',(32,16),'blue').save(signature,format='PNG')
+    db.companies.insert_one({'id':company,'nama':'Production QA','company_code':'QA','app_name':'BIG Mobile','director_signature':'data:image/png;base64,'+base64.b64encode(signature.getvalue()).decode(),'director_name':'QA Director'})
     secret=secrets.token_urlsafe(48)
     env={**os.environ,'APP_ENV':'production','MYSQL_URL':db.uri,'JWT_SECRET':secret,'DB_TRANSACTIONS':'true','FILE_STORAGE_BACKEND':'local','LOCAL_STORAGE_DIR':str(temporary/'uploads'),'APP_BASE_URL':'https://qa.example.com','CORS_ORIGINS':'https://qa.example.com','SEED_DEMO_DATA':'false','MONITOR_TOKEN':secrets.token_urlsafe(32)}
     with socket.socket() as sock:sock.bind(('127.0.0.1',0));web_port=sock.getsockname()[1]
@@ -64,7 +66,8 @@ def unit(live):
 
 
 def assign(live,account):
-    return live['call']('admin','POST','/penugasan',json={'account_id':account['id'],'petugas_id':live['users']['officer']['id']}).json()
+    letter=live['call']('admin','POST','/penugasan',json={'account_id':account['id'],'petugas_id':live['users']['officer']['id']}).json()
+    return live['call']('owner','POST','/penugasan/'+letter['assignment_id']+'/approve').json()
 
 
 def report_payload(letter,account):
@@ -96,7 +99,7 @@ def test_concurrent_assignment_only_one_commits(live):
     def send():return requests.post(live['url']+'/penugasan',json=body,headers={'Authorization':'Bearer '+live['tokens']['admin']},timeout=30)
     with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:send(),range(2)))
     assert sorted(response.status_code for response in responses)==[200,400]
-    assert live['db'].assignments.count_documents({'account_id':account['id'],'status':'AKTIF'})==1
+    assert live['db'].assignments.count_documents({'account_id':account['id'],'status':'MENUNGGU_APPROVAL'})==1
 
 
 def test_idempotent_assignment_returns_original_result(live):
@@ -230,7 +233,7 @@ def test_https_browser_workflow_and_network_recovery(live):
     key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()));cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM));Image.new('RGB',(64,64),'blue').save(image)
     fixture=temporary/'browser-fixture.json'
     print_pdf=temporary/'printed-letter.pdf'
-    fixture.write_text(json.dumps({'api_url':live['url'],'web_port':live['web_port'],'key':str(key_path),'cert':str(cert_path),'image':str(image),'pdf':str(pdf),'print_pdf':str(print_pdf),'password':live['password'],'admin_email':live['users']['admin']['email'],'officer_email':live['users']['officer']['email'],'teammate_email':live['users']['other']['email'],'admin_token':live['tokens']['admin']}))
+    fixture.write_text(json.dumps({'api_url':live['url'],'web_port':live['web_port'],'key':str(key_path),'cert':str(cert_path),'image':str(image),'pdf':str(pdf),'print_pdf':str(print_pdf),'password':live['password'],'admin_email':live['users']['admin']['email'],'officer_email':live['users']['officer']['email'],'teammate_email':live['users']['other']['email'],'admin_token':live['tokens']['admin'],'owner_token':live['tokens']['owner'],'owner_email':live['users']['owner']['email']}))
     try:
         result=subprocess.run(['node',str(live['root']/'frontend/e2e/workflow.mjs')],env={**os.environ,'E2E_FIXTURE_PATH':str(fixture)},capture_output=True,text=True,timeout=240)
         assert result.returncode==0,result.stdout+'\n'+result.stderr
@@ -329,6 +332,7 @@ def test_team_assignment_letter_chat_report_and_access_isolation(live):
     account, sk = unit(live); call = live['call']; db = live['db']
     ids = [live['users'][role]['id'] for role in ('officer', 'other')]
     letter = call('admin', 'POST', '/penugasan', json={'account_id': account['id'], 'petugas_ids': ids}).json()
+    letter=call('owner','POST','/penugasan/'+letter['assignment_id']+'/approve').json()
     task = letter['assignment_id']
     assert letter['petugas_count'] == 2 and letter['petugas_ids'] == ids
     assert db.assignments.count_documents({'account_id': account['id']}) == 1
@@ -381,6 +385,7 @@ def test_admin_report_team_payment_pending_late_proof_and_retry(live):
     call=live['call'];db=live['db'];account,_=unit(live)
     ids=[live['users'][role]['id'] for role in ('officer','other')]
     letter=call('admin','POST','/penugasan',json={'account_id':account['id'],'petugas_ids':ids}).json()
+    letter=call('owner','POST','/penugasan/'+letter['assignment_id']+'/approve').json()
     task=letter['assignment_id'];data=report_payload(letter,account)
     assert any(item['assignment_id']==task for item in call('admin','GET','/laporan-options').json()['items'])
     image=report_files()['photos'][1]
@@ -551,3 +556,71 @@ def test_pks_dates_history_private_files_and_concurrent_retry(live):
         call('admin','POST','/pks',500,data={**payload,'officer_id':live['users']['outsider']['id'],'submission_id':str(uuid.uuid4())},files=files)
         assert db.documents.count_documents({'kind':'pks','officer_id':live['users']['outsider']['id']})==0
     finally:db.block_writes('audit_logs',False)
+
+
+def test_owner_approval_blocks_execution_and_stamp_until_approved(live):
+    call=live['call'];db=live['db'];account,_=unit(live)
+    letter=call('admin','POST','/penugasan',json={'account_id':account['id'],'petugas_id':live['users']['officer']['id']}).json()
+    task=letter['assignment_id'];lid=letter['id']
+    assert letter['status']=='menunggu_approval' and letter['document_snapshot']['company']['director_signature']==''
+    assert db.assignments.find_one({'id':task})['status']=='MENUNGGU_APPROVAL'
+    count=call('owner','GET','/approvals/pending-count').json()['count']
+    assert count>=1
+    draft=call('admin','GET',f'/surat-tugas/{lid}/document').json()
+    assert not draft['director_signature'] and not draft['is_finalized'] and not draft['data']['company'].get('director_signature')
+    call('admin','POST',f'/penugasan/{task}/approve',403)
+    call('foreign','POST',f'/penugasan/{task}/approve',403)
+    call('admin','POST',f'/surat-tugas/{lid}/finalize',403)
+    call('admin','PATCH',f'/surat-tugas/{lid}/status',403,json={'status':'aktif'})
+    call('admin','PATCH',f'/surat-tugas/{lid}/status',403,json={'status':'selesai'})
+    call('officer','GET',f'/my/tugas/{account["id"]}',404)
+    call('officer','GET',f'/my/surat-tugas/{lid}/document',403)
+    call('officer','GET',f'/chat/{task}',404)
+    call('admin','POST','/laporan',409,data=report_payload(letter,account),files=report_files())
+    assert call('admin','GET',f'/public/verify/{letter["generate_code"]}').json()['valid'] is False
+    db.block_writes('audit_logs',True)
+    try:
+        call('owner','POST',f'/penugasan/{task}/approve',500)
+        assert db.assignments.find_one({'id':task})['status']=='MENUNGGU_APPROVAL'
+        assert not call('admin','GET',f'/surat-tugas/{lid}/document').json()['director_signature']
+    finally:db.block_writes('audit_logs',False)
+    def approve():return requests.post(live['url']+f'/penugasan/{task}/approve',headers={'Authorization':'Bearer '+live['tokens']['owner']},timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:approve(),range(2)))
+    assert [response.status_code for response in responses]==[200,200],[r.text for r in responses]
+    assert call('owner','GET','/approvals/pending-count').json()['count']==count-1
+    signed=call('owner','GET',f'/surat-tugas/{lid}/document').json()
+    assert signed['is_finalized'] and signed['director_signature'].startswith('data:image/png;base64,')
+    call('officer','GET',f'/my/tugas/{account["id"]}')
+    call('officer','GET',f'/my/surat-tugas/{lid}/document')
+    assert call('admin','GET',f'/public/verify/{letter["generate_code"]}').json()['valid'] is True
+    db.companies.update_one({'id':account['company_id']},{'$set':{'director_signature':'changed-after-approval'}})
+    assert call('admin','GET',f'/surat-tugas/{lid}/document').json()['director_signature']==signed['director_signature']
+    db.companies.update_one({'id':account['company_id']},{'$set':{'director_signature':signed['director_signature']}})
+    assert db.audit_logs.count_documents({'entity':'assignment','entity_id':task,'activity':'Menyetujui surat tugas'})==1
+
+
+def test_owner_admin_creation_and_monthly_cash_cards(live):
+    from decimal import Decimal
+    call=live['call'];owner=live['users']['owner']
+    password=secrets.token_urlsafe(18);email=uuid.uuid4().hex+'@example.com'
+    body={'name':'QA Admin from owner','email':email,'password':password}
+    call('admin','POST','/admin-users',403,json=body)
+    created=call('owner','POST','/admin-users',json=body).json()
+    assert created['role']=='admin' and created['company_id']==owner['company_id'] and 'password_hash' not in created
+    call('owner','POST','/admin-users',422,json={**body,'email':uuid.uuid4().hex+'@example.com','role':'owner'})
+    call('admin','GET','/admin-users',403)
+    assert any(row['id']==created['id'] for row in call('owner','GET','/admin-users').json()['items'])
+    before=call('owner','GET','/dashboard/finance').json()
+    foreign=call('foreign','GET','/dashboard/finance').json()
+    leasing=call('owner','POST','/clients',json={'nama_perusahaan':'Monthly Leasing QA'}).json()
+    call('owner','POST','/leasing-payments',data={'client_id':leasing['id'],'payment_amount':'1200000.25','payment_request_id':str(uuid.uuid4())},files={'file':('income.png',report_files()['photos'][1],'image/png')})
+    account,_=unit(live);letter=assign(live,account)
+    report=call('admin','POST','/laporan',data=report_payload(letter,account),files=report_files()).json()
+    waiting=call('admin','GET','/dashboard/finance').json()
+    assert waiting['expense']==before['expense']
+    call('admin','POST',f'/laporan/{report["id"]}/payment',data={'payment_request_id':str(uuid.uuid4())},files={'file':('out.png',report_files()['photos'][1],'image/png')})
+    after=call('owner','GET','/dashboard/finance').json()
+    assert Decimal(after['income'])-Decimal(before['income'])==Decimal('1200000.25')
+    assert Decimal(after['expense'])-Decimal(before['expense'])==Decimal('500000.00')
+    assert Decimal(after['profit'])-Decimal(before['profit'])==Decimal('700000.25')
+    assert call('foreign','GET','/dashboard/finance').json()==foreign
