@@ -11,6 +11,7 @@ export default function CompanyLetterhead({ company = {}, title, number }) {
           <div style={{ fontSize: 23, fontWeight: 800, lineHeight: 1.2, color: "#0070c0", printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
             {name.split(/(\bGENERASI\b)/i).map((part, index) => <span key={index} style={/^generasi$/i.test(part) ? { color: "#ff0000" } : undefined}>{part}</span>)}
           </div>
+          <div style={{ fontFamily: "Times New Roman, serif", fontSize: 12, fontWeight: 700, lineHeight: 1.2, color: "#ff0000", marginTop: 2, printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>PROFESIONAL COLLECTION</div>
           {address && <div style={{ fontSize: 10, lineHeight: 1.4, marginTop: 3, whiteSpace: "pre-line" }}>{address}</div>}
           {(company.email || phone) && <div style={{ fontSize: 10, lineHeight: 1.4, marginTop: 2 }}>
             {[company.email && `Email: ${company.email}`, phone && `Telp: ${phone}`].filter(Boolean).join(" · ")}
