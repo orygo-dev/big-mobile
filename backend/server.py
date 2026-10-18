@@ -416,7 +416,7 @@ class CompanyInput(BusinessInput):
     director_name: Optional[str] = ""
     director_position: Optional[str] = "DIREKTUR"
     company_code: Optional[str] = ""
-    number_format: Optional[str] = "{sequence}/{company_code}/{month_name}/{year}"
+    number_format: Optional[str] = "{sequence}/{company_code}/{month_roman}/{year}"
     logo: Optional[str] = Field("", max_length=3_000_000)
     app_name: Optional[str] = "FieldCollector"
 
@@ -999,12 +999,7 @@ async def create_penugasan(data: PenugasanInput, request: Request, user: dict = 
     # Official document number (single official number, generated immediately -- no manual finalize step)
     company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0}) or {}
     dseq = await next_sequence(f"docnum_{user['company_id']}_{year}")
-    fmt = company.get("number_format") or "{sequence}/{company_code}/{month_name}/{year}"
-    try:
-        document_number = fmt.format(sequence=f"{dseq:04d}", company_code=company.get("company_code", ""),
-                                     month_name=ID_MONTHS_UP[now.month], year=year)
-    except (KeyError, IndexError, ValueError):
-        document_number = f"{dseq:04d}/{company.get('company_code', '')}/{ID_MONTHS_UP[now.month]}/{year}"
+    document_number = format_document_number(company, dseq, now)
     generate_code = f"GNR-{year}-{uuid.uuid4().hex[:20].upper()}"
     reg_seq = await next_sequence(f"bastk_{user['company_id']}_{year}")
     register_number = f"{reg_seq}/{int_to_roman(year)}/{MONTH_ROMAN[now.month]}"
@@ -1180,6 +1175,24 @@ ID_MONTHS_UP = ["", "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JUL
 MONTH_ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
 
 
+DEFAULT_DOCUMENT_FORMAT = "{sequence}/{company_code}/{month_roman}/{year}"
+LEGACY_DOCUMENT_FORMAT = "{sequence}/{company_code}/{month_name}/{year}"
+
+
+def effective_document_format(company):
+    configured = company.get("number_format")
+    return DEFAULT_DOCUMENT_FORMAT if not configured or configured == LEGACY_DOCUMENT_FORMAT else configured
+
+
+def format_document_number(company, sequence, issued_at):
+    values = {"sequence": f"{sequence:03d}", "company_code": company.get("company_code") or "",
+              "month_name": ID_MONTHS_UP[issued_at.month], "month_roman": MONTH_ROMAN[issued_at.month], "year": issued_at.year}
+    try:
+        return effective_document_format(company).format(**values)
+    except (KeyError, IndexError, ValueError):
+        return DEFAULT_DOCUMENT_FORMAT.format(**values)
+
+
 def int_to_roman(n: int) -> str:
     vals = [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
             (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
@@ -1323,12 +1336,7 @@ async def finalize_document(lid: str, request: Request, user: dict = Depends(adm
     now = datetime.now(timezone.utc)
     year = now.year
     seq = await next_sequence(f"docnum_{user['company_id']}_{year}")
-    fmt = company.get("number_format") or "{sequence}/{company_code}/{month_name}/{year}"
-    try:
-        document_number = fmt.format(sequence=f"{seq:04d}", company_code=company.get("company_code", ""),
-                                     month_name=ID_MONTHS_UP[now.month], year=year)
-    except (KeyError, IndexError, ValueError):
-        document_number = f"{seq:04d}/{company.get('company_code', '')}/{ID_MONTHS_UP[now.month]}/{year}"
+    document_number = format_document_number(company, seq, now)
     generate_code = f"GNR-{year}-{uuid.uuid4().hex[:20].upper()}"
     reg_seq = await next_sequence(f"bastk_{user['company_id']}_{year}")
     register_number = f"{reg_seq}/{int_to_roman(year)}/{MONTH_ROMAN[now.month]}"
@@ -1608,6 +1616,7 @@ async def get_company(user: dict = Depends(get_current_user)):
     c = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Perusahaan tidak ditemukan")
+    c["number_format"] = effective_document_format(c)
     return c
 
 @api_router.get("/branding")

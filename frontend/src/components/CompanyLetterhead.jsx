@@ -1,5 +1,5 @@
 /** Current tenant settings, shared by assignment letters and their attachments. */
-export default function CompanyLetterhead({ company = {}, title, number }) {
+export default function CompanyLetterhead({ company = {}, title, number, titleUnderline = false }) {
   const name = company.name ?? company.nama ?? "";
   const address = company.address ?? company.alamat ?? "";
   const phone = company.phone ?? company.telepon ?? "";
@@ -20,8 +20,8 @@ export default function CompanyLetterhead({ company = {}, title, number }) {
         {company.logo && <div aria-hidden="true" style={{ width: 76, flexShrink: 0 }} />}
       </div>
       {title && <div style={{ textAlign: "center", marginTop: 10 }}>
-        <div style={{ fontSize: 14, fontWeight: 800 }}>{title}</div>
-        {number && <div style={{ fontSize: 11, marginTop: 2 }}>Nomor: {number}</div>}
+        <div style={{ fontSize: 14, fontWeight: 800, textDecoration: titleUnderline ? "underline" : undefined, textUnderlineOffset: titleUnderline ? 2 : undefined }}>{title}</div>
+        {number && <div style={{ fontSize: titleUnderline ? 13 : 11, marginTop: 2 }}>Nomor: {number}</div>}
       </div>}
     </header>
   );

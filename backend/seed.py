@@ -149,7 +149,7 @@ async def ensure_document_config(db, company_id):
     if comp and "company_code" not in comp:
         await db.companies.update_one({"id": company_id}, {"$set": {
             "city": "Jakarta", "director_name": "Budi Hartono", "director_position": "DIREKTUR",
-            "company_code": "GKN", "number_format": "{sequence}/{company_code}/{month_name}/{year}",
+            "company_code": "GKN", "number_format": "{sequence}/{company_code}/{month_roman}/{year}",
             "logo": "",
         }})
 

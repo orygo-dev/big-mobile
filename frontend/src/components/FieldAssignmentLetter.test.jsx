@@ -9,12 +9,18 @@ const fixture = {
     company: {name: "PT. BERKAT INTIM GENERASI", director_name: "Direktur Contoh", city: "Palangka Raya", address: "Alamat perusahaan"},
     finance: {name: "Leasing Contoh"},
     officer: {name: "Petugas Contoh", nik: "1234567890123456", certification_number: "SPPI-123"},
-    letter: {document_number: "001/BIG/2026", issue_date: "2026-10-10", valid_from: "2026-10-10", valid_until: "2026-10-24"},
+    letter: {document_number: "018/BIG-SKS/X/2026", issue_date: "2026-10-10", valid_from: "2026-10-10", valid_until: "2026-10-24"},
     accounts: [{contract_number: "KONTRAK-1", debtor_name: "Debitur Satu"}, {contract_number: "KONTRAK-2", debtor_name: "Debitur Dua"}],
   },
 };
 
 describe("field assignment letter", () => {
+  it("renders the substitution title underlined and the stored official number unchanged", () => {
+    const html=renderToStaticMarkup(<FieldAssignmentLetter doc={fixture}/>);
+    expect(html).toContain('text-decoration:underline');
+    expect(html).toContain('SURAT KUASA SUBSTITUSI');
+    expect(html).toContain('Nomor: 018/BIG-SKS/X/2026');
+  });
   it("lists every assigned officer in both the identity table and signature area", () => {
     const officers = [{id: 'first', name: 'Petugas Pertama', nik: 'NIK-SATU'}, {id: 'second', name: 'Petugas Kedua', nik: 'NIK-DUA'}];
     const html = renderToStaticMarkup(<FieldAssignmentLetter doc={{...fixture, data: {...fixture.data, officers}}} />);

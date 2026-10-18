@@ -704,3 +704,22 @@ def test_public_installation_metadata_tracks_saved_company_branding(live):
         assert changed['name']=='Renamed Mobile' and changed['icons'][0]['src']!=old_icon
     finally:
         db.companies.update_one({'id':company},{'$set':{'app_name':original.get('app_name','BIG Mobile'),'nama':original.get('nama',''),'logo':original.get('logo','')}})
+
+
+def test_new_substitution_number_uses_settings_and_keeps_existing_issued_numbers(live):
+    import re
+    db,call=live['db'],live['call'];company=live['users']['admin']['company_id']
+    original=db.companies.find_one({'id':company})
+    prior=[(row['id'],row.get('document_number')) for row in db.assignment_letters.find({'company_id':company})]
+    try:
+        db.companies.update_one({'id':company},{'$set':{'company_code':'BIG-SKS','number_format':'{sequence}/{company_code}/{month_name}/{year}'}})
+        account,_=unit(live)
+        letter=call('admin','POST','/penugasan',json={'account_id':account['id'],'petugas_id':live['users']['officer']['id']}).json()
+        assert re.fullmatch(r'\d{3,}/BIG-SKS/[IVX]+/\d{4}',letter['document_number'])
+        stored=db.assignment_letters.find_one({'id':letter['id']})
+        assert stored['nomor']==stored['document_number']==letter['document_number']
+        for identity,number in prior:
+            assert db.assignment_letters.find_one({'id':identity})['document_number']==number
+        assert call('admin','GET','/company').json()['number_format']=='{sequence}/{company_code}/{month_roman}/{year}'
+    finally:
+        db.companies.update_one({'id':company},{'$set':{'company_code':original.get('company_code',''),'number_format':original.get('number_format','{sequence}/{company_code}/{month_roman}/{year}')}})

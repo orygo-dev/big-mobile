@@ -59,7 +59,7 @@ export default function Pengaturan() {
       alamat: company.alamat || "", telepon: company.telepon || "",
       email: company.email || "", city: company.city || "", director_name: company.director_name || "",
       director_position: company.director_position || "DIREKTUR", company_code: company.company_code || "",
-      number_format: company.number_format || "{sequence}/{company_code}/{month_name}/{year}", logo: company.logo || "",
+      number_format: company.number_format || "{sequence}/{company_code}/{month_roman}/{year}", logo: company.logo || "",
     });
     setOpen(true);
   };
@@ -166,7 +166,7 @@ export default function Pengaturan() {
               <div><Label>Jabatan Pemberi Tugas</Label><Input value={form.director_position} onChange={set("director_position")} className="mt-1.5 rounded-xl" /></div>
               <div><Label>Kode Perusahaan</Label><Input value={form.company_code} onChange={set("company_code")} placeholder="HSN" className="mt-1.5 rounded-xl" data-testid="company-code-input" /></div>
               <div className="sm:col-span-2"><Label>Format Nomor Surat</Label><Input value={form.number_format} onChange={set("number_format")} className="mt-1.5 rounded-xl font-mono text-xs" data-testid="company-format-input" />
-                <p className="text-[11px] text-slate-400 mt-1">Placeholder: {"{sequence}"}, {"{company_code}"}, {"{month_name}"}, {"{year}"}</p>
+                <p className="text-[11px] text-slate-400 mt-1">Placeholder: {"{sequence}"}, {"{company_code}"}, {"{month_roman}"} (bulan Romawi), {"{month_name}"} (nama bulan), {"{year}"}. Nomor urut minimal 3 digit, misalnya 018/BIG-SKS/X/2026</p>
               </div>
             </div>
             <DialogFooter>

@@ -37,7 +37,7 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
       .field-letter .field-verification { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 8px; break-inside: avoid; }
       .field-letter .field-footer { border-top: 2px solid #111; margin-top: 8px; padding-top: 4px; font-size: 8px; text-align: center; }
     `}</style>
-    <CompanyLetterhead company={doc.letterhead || company} title="SURAT TUGAS" number={d.letter.document_number || doc.st_nomor || "(akan dibuat saat finalisasi)"} />
+    <CompanyLetterhead company={doc.letterhead || company} title="SURAT KUASA SUBSTITUSI" titleUnderline number={d.letter.document_number || doc.st_nomor || "(akan dibuat saat finalisasi)"} />
     {doc.letter_status==='menunggu_approval'&&<p style={{textAlign:'center',fontWeight:800,color:'#b45309',border:'1px solid #f59e0b',padding:6}} data-testid="approval-draft">DRAFT - MENUNGGU APPROVAL OWNER. BELUM BERLAKU UNTUK PENUGASAN.</p>}
     <p>Yang bertanda tangan di bawah ini:</p>
     <table className="field-details"><tbody>
@@ -82,7 +82,7 @@ export default function FieldAssignmentLetter({ doc, qrSrc }) {
     </div>
     <div className="field-verification">
       {doc.is_finalized && <img src={qrSrc} alt="QR verifikasi surat tugas" data-testid="doc-qr" style={{ width: 50, height: 50 }} />}
-      <div><b>{doc.is_finalized ? "VERIFIKASI SURAT TUGAS" : "DRAFT - BELUM DIFINALISASI"}</b><br />Kode: {d.letter.generate_code || "-"}<br />Pindai QR untuk memeriksa nomor dan status surat pada aplikasi.</div>
+      <div><b>{doc.is_finalized ? "VERIFIKASI SURAT KUASA SUBSTITUSI" : "DRAFT - BELUM DIFINALISASI"}</b><br />Kode: {d.letter.generate_code || "-"}<br />Pindai QR untuk memeriksa nomor dan status surat pada aplikasi.</div>
       <div style={{ marginLeft: "auto" }}>Tembusan:<br />1. {finance}<br />2. Administrasi {company.name}<br />3. Arsip</div>
     </div>
     <div className="field-footer">{[company.address, company.email && `Email: ${company.email}`, company.phone && `Telp: ${company.phone}`].filter(Boolean).join(" · ")}</div>

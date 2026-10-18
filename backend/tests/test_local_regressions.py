@@ -522,3 +522,28 @@ def test_install_icon_handles_missing_logo_and_rejects_bad_saved_logo(local_api)
     assert api.get('/api/branding/icon/9999.png').status_code==404
     db.companies.find_one.return_value={'logo':'https://example.com/untrusted.png'}
     assert api.get('/api/branding/icon/192.png').status_code==422
+
+
+@pytest.mark.parametrize('configured',[None,'','{sequence}/{company_code}/{month_name}/{year}','{sequence}/{company_code}/{month_roman}/{year}','{invalid}'])
+def test_substitution_number_format_supports_old_settings_and_roman_months(configured):
+    from datetime import datetime
+    for month, roman in enumerate(server.MONTH_ROMAN[1:],1):
+        company={'company_code':'BIG-SKS','number_format':configured}
+        assert server.format_document_number(company,18,datetime(2026,month,1))==f'018/BIG-SKS/{roman}/2026'
+    assert server.format_document_number(company,1000,datetime(2026,10,1))=='1000/BIG-SKS/X/2026'
+
+
+def test_custom_number_format_keeps_company_code_from_settings():
+    from datetime import datetime
+    company={'company_code':'RP-SKS','number_format':'SKS/{company_code}/{sequence}/{month_roman}/{year}'}
+    assert server.format_document_number(company,7,datetime(2026,10,1))=='SKS/RP-SKS/007/X/2026'
+
+
+def test_company_settings_exposes_effective_roman_number_format(local_api):
+    api,db=local_api
+    db.companies.find_one.return_value={'id':ADMIN['company_id'],'number_format':server.LEGACY_DOCUMENT_FORMAT,'company_code':'BIG-SKS'}
+    db.users.find_one.return_value=ADMIN
+    result=api.get('/api/company',headers=bearer()).json()
+    assert result['number_format']==server.DEFAULT_DOCUMENT_FORMAT
+    db.assignment_letters.update_many.assert_not_called()
+    db.assignment_letters.update_one.assert_not_called()
