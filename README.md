@@ -162,3 +162,12 @@ Header admin/owner mengikuti **Nama Perusahaan** pada Pengaturan. Nama aplikasi 
 Manifest publik tersedia pada `/api/branding/manifest.webmanifest`, dengan `name`, `short_name`, identitas dan scope aplikasi yang stabil. Ikon PNG persegi 192 dan 512 piksel dibuat dari logo, menjaga proporsi dan menyediakan latar putih; favicon 32 piksel dan apple-touch-icon 180 piksel memakai sumber yang sama. Manifest tidak disimpan dalam cache dan URL ikon menyertakan versi branding. Tidak ada tanda tangan, token, atau informasi kontak privat dalam manifest. Branding publik memakai perusahaan yang sama dengan halaman login; instalasi ini menggunakan satu identitas aplikasi per domain.
 
 Pembaruan instalasi aaPanel yang sudah ada: jalankan `deploy/update-app-branding.sh` sebagai root. Setelah berhasil, buka ulang situs di Chrome. Untuk pintasan lama yang tetap memakai identitas sebelumnya, hapus pintasan lalu buat ulang; aplikasi yang sudah terpasang dapat meminta persetujuan pembaruan nama/ikon sesuai perilaku Chrome. Skrip tidak menghapus data aplikasi atau pengaturan. Dokumentasi pembaruan identitas Chrome: https://developer.chrome.com/blog/improvements-to-web-app-updates .
+
+
+### Judul dan nomor surat kuasa substitusi
+
+Output surat penugasan memakai judul **SURAT KUASA SUBSTITUSI** dengan garis bawah dan nomor di baris berikutnya, rata tengah. Format bawaan nomor baru adalah `{sequence}/{company_code}/{month_roman}/{year}`: nomor urut minimal tiga digit, kode dari Pengaturan, bulan Romawi dan tahun. Contoh nomor urut 18 pada Oktober 2026 dengan Kode Perusahaan `BIG-SKS`: `018/BIG-SKS/X/2026`. Nomor urut di atas 999 tetap utuh; pencacah tahunan tidak direset oleh pembaruan ini.
+
+Format bawaan lama `{sequence}/{company_code}/{month_name}/{year}` secara otomatis dibaca sebagai bawaan baru, termasuk pada formulir Pengaturan. Format khusus lain tetap dihormati; placeholder `{month_name}` masih tersedia untuk format khusus. Nomor yang sudah diterbitkan tidak ditulis ulang. Kode `-SKS` tidak ditambahkan otomatis: isi Kode Perusahaan dengan `BIG-SKS` bila itulah kode yang diinginkan.
+
+Pembaruan aaPanel: jalankan `deploy/update-substitution-letter.sh` sebagai root, lalu muat ulang halaman surat. Pembaruan mencakup judul dan penomoran baru; isi surat serta alur approval tetap mengikuti alur yang ada.
