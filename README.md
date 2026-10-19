@@ -171,3 +171,18 @@ Output surat penugasan memakai judul **SURAT KUASA SUBSTITUSI** dengan garis baw
 Format bawaan lama `{sequence}/{company_code}/{month_name}/{year}` secara otomatis dibaca sebagai bawaan baru, termasuk pada formulir Pengaturan. Format khusus lain tetap dihormati; placeholder `{month_name}` masih tersedia untuk format khusus. Nomor yang sudah diterbitkan tidak ditulis ulang. Kode `-SKS` tidak ditambahkan otomatis: isi Kode Perusahaan dengan `BIG-SKS` bila itulah kode yang diinginkan.
 
 Pembaruan aaPanel: jalankan `deploy/update-substitution-letter.sh` sebagai root, lalu muat ulang halaman surat. Pembaruan mencakup judul dan penomoran baru; isi surat serta alur approval tetap mengikuti alur yang ada.
+
+
+### Koreksi data dan penghapusan admin/owner
+
+Tombol hapus tersedia pada Pemberi Kuasa/Leasing, Surat Kuasa, Kontrak & Unit, Petugas, Penugasan, Surat Tugas, Laporan Lapangan, Pembayaran Leasing dan PKS. Owner juga dapat menghapus akun admin melalui Pengguna Admin; admin tidak dapat menghapus owner atau admin lain. Audit Log dan pengaturan perusahaan tidak dihapus melalui endpoint koreksi.
+
+Dialog meminta alasan penghapusan, menyebutkan dampak, dan menampilkan kendala relasi langsung di dialog. Jika record induk masih dipakai, hapus record turunan yang salah terlebih dahulu: misalnya laporan → penugasan/surat → kontrak/unit → surat kuasa → leasing. PKS perlu dihapus sebelum menghapus petugas yang terikat PKS. Dokumen PDF milik Surat Kuasa tidak lagi menghalangi penghapusan Surat Kuasa yang belum digunakan.
+
+Menghapus laporan juga menghapus metadata foto/bukti pembayaran, mengeluarkan pengeluaran terkait dari laporan keuangan dan mengembalikan status unit hanya bila masih berada pada penugasan tersebut. Menghapus pembayaran leasing mengeluarkan pemasukan tersebut dari total dan profit. Seluruh perubahan dan alasan penghapusan dicatat secara atomik di Audit Log, dengan ringkasan identitas/nominal sumber, tanpa password/hash. Penghapusan record pembayaran tidak melakukan pembatalan transfer bank.
+
+Menghapus penugasan/surat tugas juga menghapus surat dan chat terkait; unit dilepas hanya bila masih milik penugasan itu. Nomor surat/counter tidak direset atau dipakai ulang. Laporan terkait harus dihapus terlebih dahulu. Notifikasi WhatsApp yang belum diproses dibatalkan; pesan yang sudah terkirim atau sedang diproses penyedia tidak dapat ditarik kembali. Kunci idempotency untuk respons JSON record yang dihapus ditandai agar pengulangan request lama tidak menampilkan record yang sudah hilang.
+
+Akses file hilang segera setelah metadata induknya dihapus. Pembersihan objek fisik dijadwalkan melalui jurnal penyimpanan yang sudah ada; worker menghapus objek tak lagi direferensikan setelah jeda satu jam, sehingga kegagalan storage tidak menyebabkan penghapusan DB setengah jalan.
+
+Pembaruan aaPanel: jalankan `deploy/update-crud-deletion.sh` sebagai root. Skrip mencadangkan kode, memperbarui file backend/UI, membangun frontend dan menunggu health siap. Skrip hanya memasang kemampuan hapus; tidak menghapus record produksi apa pun dengan sendirinya.
