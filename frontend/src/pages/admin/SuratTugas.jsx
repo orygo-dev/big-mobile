@@ -1,3 +1,4 @@
+import DeleteDataButton from "@/components/DeleteDataButton";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "@/lib/api";
@@ -88,6 +89,7 @@ export default function SuratTugas() {
                       <button onClick={() => navigate(`/admin/surat-tugas/${l.id}/print`)} className="text-slate-500 hover:text-blue-600 p-1.5" title="Cetak ringkas" data-testid={`st-print-${l.id}`}>
                         <Printer className="w-4 h-4" />
                       </button>
+                      <DeleteDataButton endpoint={`/surat-tugas/${l.id}`} name={`Surat ${l.document_number || l.nomor}`} testId={`st-delete-${l.id}`} description="Penugasan, surat dan percakapan terkait ikut dihapus. Hapus laporan terkait terlebih dahulu. Nomor surat tidak digunakan ulang." onDeleted={()=>{load();window.dispatchEvent(new Event('big-mobile-approval-changed'));window.dispatchEvent(new Event('big-mobile-chat-read'));}}/>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button className="text-slate-500 hover:text-slate-800 p-1.5" data-testid={`st-menu-${l.id}`}><MoreVertical className="w-4 h-4" /></button>

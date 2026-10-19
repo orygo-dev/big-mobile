@@ -125,7 +125,7 @@ def local_api(monkeypatch):
         cursor.to_list = AsyncMock(return_value=[])
         cursor.sort.return_value = cursor
         cursor.skip.return_value = cursor
-        collections[name] = SimpleNamespace(find_one=AsyncMock(return_value=None), find_one_and_update=AsyncMock(return_value={"count": 1}), find=Mock(return_value=cursor), count_documents=AsyncMock(return_value=0), distinct=AsyncMock(return_value=[]), insert_one=AsyncMock(), update_one=AsyncMock(), update_many=AsyncMock(), create_index=AsyncMock(), delete_one=AsyncMock())
+        collections[name] = SimpleNamespace(find_one=AsyncMock(return_value=None), find_one_and_update=AsyncMock(return_value={"count": 1}), find=Mock(return_value=cursor), count_documents=AsyncMock(return_value=0), distinct=AsyncMock(return_value=[]), insert_one=AsyncMock(), update_one=AsyncMock(), update_many=AsyncMock(), create_index=AsyncMock(), delete_one=AsyncMock(), delete_many=AsyncMock())
     database = SimpleNamespace(**collections, initialize=AsyncMock(), purge_expired=AsyncMock())
     monkeypatch.setattr(server, "db", database)
     monkeypatch.setattr(server, "get_object", Mock(return_value=(b"photo", "image/jpeg")))

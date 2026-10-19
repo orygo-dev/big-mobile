@@ -1,3 +1,4 @@
+import DeleteDataButton from "@/components/DeleteDataButton";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api, { errMsg, fileUrl } from "@/lib/api";
@@ -40,6 +41,7 @@ export default function LaporanDetail() {
 
   return (
     <div className="space-y-5 animate-fade-in max-w-5xl">
+      <div className="flex justify-end"><DeleteDataButton endpoint={`/laporan/${r.id}`} name={`Laporan ${r.letter_nomor || r.id}`} description="Laporan beserta bukti dan pembayaran dihapus. Total pengeluaran serta profit dihitung ulang. Pesan WhatsApp yang sudah terkirim tidak dapat ditarik kembali." onDeleted={()=>navigate('/admin/laporan',{replace:true})}/></div>
       <button onClick={() => navigate("/admin/laporan")} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800" data-testid="laporan-detail-back">
         <ArrowLeft className="w-4 h-4" /> Kembali
       </button>

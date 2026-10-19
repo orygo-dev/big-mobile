@@ -723,3 +723,81 @@ def test_new_substitution_number_uses_settings_and_keeps_existing_issued_numbers
         assert call('admin','GET','/company').json()['number_format']=='{sequence}/{company_code}/{month_roman}/{year}'
     finally:
         db.companies.update_one({'id':company},{'$set':{'company_code':original.get('company_code',''),'number_format':original.get('number_format','{sequence}/{company_code}/{month_roman}/{year}')}})
+
+
+def test_correction_delete_paid_report_assignment_and_master_chain_is_atomic(live):
+    from decimal import Decimal
+    from pypdf import PdfWriter
+    db,call=live['db'],live['call'];cid=live['users']['admin']['company_id']
+    account,sk=unit(live);letter=assign(live,account)
+    writer=PdfWriter();writer.add_blank_page(width=595,height=842);output=io.BytesIO();writer.write(output)
+    proof=call('admin','POST','/surat-kuasa/'+sk['id']+'/file',files={'file':('SK.pdf',output.getvalue(),'application/pdf')}).json()
+    baseline=call('owner','GET','/dashboard/finance').json()
+    report=call('admin','POST','/laporan',data=report_payload(letter,account),files={**report_files(),'payment_proof':('paid.png',report_files()['photos'][1],'image/png')}).json()
+    current=call('owner','GET','/dashboard/finance').json()
+    assert Decimal(current['expense'])-Decimal(baseline['expense'])==Decimal('500000')
+    call('admin','DELETE','/penugasan/'+letter['assignment_id'],409,json={'reason':'Salah input'})
+    call('foreign','DELETE','/laporan/'+report['id'],404)
+    call('officer','DELETE','/laporan/'+report['id'],403)
+    db.block_writes('audit_logs',True)
+    try:
+        call('owner','DELETE','/laporan/'+report['id'],500,json={'reason':'Salah input'})
+        assert db.field_reports.find_one({'id':report['id']})
+        assert db.report_photos.count_documents({'report_id':report['id']})==2
+    finally:db.block_writes('audit_logs',False)
+    call('owner','DELETE','/laporan/'+report['id'],json={'reason':'Nominal pembayaran salah'})
+    assert not db.field_reports.find_one({'id':report['id']})
+    assert db.report_photos.count_documents({'report_id':report['id']})==0
+    assert call('owner','GET','/dashboard/finance').json()==baseline
+    audit=db.audit_logs.find_one({'entity':'laporan lapangan','entity_id':report['id']})
+    assert audit['deletion_reason']=='Nominal pembayaran salah' and audit['deleted_data']['payment_amount']=='500000.00'
+    assert db.accounts.find_one({'id':account['id']})['status']=='DITUGASKAN'
+    call('admin','DELETE','/surat-tugas/'+letter['id'],json={'reason':'Unit pada surat salah'})
+    assert not db.assignments.find_one({'id':letter['assignment_id']})
+    assert not db.assignment_letters.find_one({'id':letter['id']})
+    assert db.accounts.find_one({'id':account['id']})['status']=='BELUM_DITUGASKAN'
+    call('admin','DELETE','/akun/'+account['id'],json={'reason':'Kontrak salah'})
+    call('admin','DELETE','/surat-kuasa/'+sk['id'],json={'reason':'Surat kuasa salah'})
+    assert not db.documents.find_one({'kind':'surat_kuasa','ref_id':sk['id']})
+    call('admin','GET',proof['file_url'].removeprefix('/api'),404)
+    call('admin','DELETE','/clients/'+account['client_id'],json={'reason':'Leasing salah'})
+    assert not db.clients.find_one({'id':account['client_id']})
+
+
+def test_correction_delete_leasing_pks_and_admin_access(live):
+    from pypdf import PdfWriter
+    db,call=live['db'],live['call'];cid=live['users']['owner']['company_id']
+    before=call('owner','GET','/dashboard/finance').json()
+    leasing=call('admin','POST','/clients',json={'nama_perusahaan':'Deletion Leasing QA'}).json()
+    payment=call('admin','POST','/leasing-payments',data={'client_id':leasing['id'],'payment_amount':'350000.25','payment_request_id':str(uuid.uuid4())},files={'file':('paid.png',report_files()['photos'][1],'image/png')}).json()
+    call('admin','DELETE','/clients/'+leasing['id'],409)
+    call('foreign','DELETE','/leasing-payments/'+payment['id'],404)
+    call('owner','DELETE','/leasing-payments/'+payment['id'],json={'reason':'Pembayaran duplikat'})
+    assert call('owner','GET','/dashboard/finance').json()==before
+    call('admin','GET',payment['url'].removeprefix('/api'),404)
+    call('admin','DELETE','/clients/'+leasing['id'])
+    officer=call('admin','POST','/petugas',json={'name':'Officer Deletion','email':uuid.uuid4().hex+'@example.com','password':'Synthetic-password-123','petugas_code':uuid.uuid4().hex[:8]}).json()
+    writer=PdfWriter();writer.add_blank_page(width=595,height=842);output=io.BytesIO();writer.write(output)
+    pks=call('admin','POST','/pks',data={'officer_id':officer['id'],'duration':'1','unit':'TAHUN','submission_id':str(uuid.uuid4())},files={'file':('PKS.pdf',output.getvalue(),'application/pdf')}).json()
+    call('admin','DELETE','/petugas/'+officer['id'],409)
+    call('admin','DELETE','/pks/'+pks['id'],json={'reason':'Dokumen PKS salah'})
+    call('admin','DELETE','/petugas/'+officer['id'])
+    created=call('owner','POST','/admin-users',json={'name':'Temporary Admin','email':uuid.uuid4().hex+'@example.com','password':'Synthetic-password-123'}).json()
+    call('admin','DELETE','/admin-users/'+created['id'],403)
+    call('owner','DELETE','/admin-users/'+live['users']['owner']['id'],404)
+    call('owner','DELETE','/admin-users/'+created['id'],json={'reason':'Akun percobaan'})
+    assert not db.users.find_one({'id':created['id']})
+
+
+def test_deleting_assignment_and_creating_report_concurrently_cannot_orphan_report(live):
+    call,db=live['call'],live['db'];account,_=unit(live);letter=assign(live,account)
+    def remove():return requests.delete(live['url']+'/penugasan/'+letter['assignment_id'],headers={'Authorization':'Bearer '+live['tokens']['admin']},json={'reason':'Salah penugasan'},timeout=30)
+    def create():return requests.post(live['url']+'/laporan',headers={'Authorization':'Bearer '+live['tokens']['admin']},data=report_payload(letter,account),files=report_files(),timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        deletion=pool.submit(remove);creation=pool.submit(create);deleted,created=deletion.result(),creation.result()
+    assert deleted.status_code in (200,409),deleted.text
+    assert created.status_code in (200,404,409),created.text
+    report=db.field_reports.find_one({'assignment_id':letter['assignment_id']})
+    assignment=db.assignments.find_one({'id':letter['assignment_id']})
+    assert not report or assignment
+    if deleted.status_code==200:assert not report and not assignment

@@ -594,13 +594,26 @@ async def reports_7days(user: dict = Depends(admin_required)):
 async def delete_unused_record(collection_name, record_id, user, request, label, references, extra_filter=None):
     scope = {"id": record_id, "company_id": user["company_id"], **(extra_filter or {})}
     collection = getattr(db, collection_name)
-    if not await collection.find_one(scope):
+    record = await collection.find_one(scope)
+    if not record:
         raise HTTPException(status_code=404, detail=f"{label} tidak ditemukan")
     for ref_collection, field in references:
         if await getattr(db, ref_collection).find_one({"company_id": user["company_id"], field: record_id}):
-            raise HTTPException(status_code=409, detail=f"{label} masih digunakan oleh data terkait. Hapus data terkait yang belum digunakan, atau nonaktifkan data ini.")
+            linked_label = {"power_of_attorneys":"Surat Kuasa", "accounts":"Kontrak & Unit", "assignments":"Penugasan", "assignment_letters":"Surat Tugas", "field_reports":"Laporan Lapangan", "documents":"PKS / Pembayaran Leasing / Dokumen", "debtors":"Debitur"}.get(ref_collection, "data terkait")
+            raise HTTPException(status_code=409, detail=f"{label} masih digunakan pada menu {linked_label}. Hapus record terkait yang salah melalui menu tersebut terlebih dahulu, lalu ulangi penghapusan ini.")
+    if collection_name == "power_of_attorneys":
+        attachments = await db.documents.find({"company_id": user["company_id"], "kind": "surat_kuasa", "ref_id": record_id}).to_list(None)
+        await record_deletion.cleanup(sys.modules[__name__], user, attachments)
+        await db.documents.delete_many({"company_id": user["company_id"], "kind": "surat_kuasa", "ref_id": record_id})
     await collection.delete_one(scope)
-    await log_audit(user, f"Menghapus {label}", collection_name, record_id, request)
+    reason = "Koreksi kesalahan input"
+    if await request.body():
+        try:
+            payload = await request.json()
+            reason = record_deletion.DeletionInput(**payload).reason
+        except Exception:
+            raise HTTPException(422, "Alasan penghapusan harus berupa teks 3–500 karakter")
+    await record_deletion.audit(sys.modules[__name__], user, request, label, record, reason)
     return {"ok": True}
 
 
@@ -616,21 +629,21 @@ async def delete_client(record_id: str, request: Request, user: dict = Depends(a
 @transactional
 async def delete_sk(record_id: str, request: Request, user: dict = Depends(admin_required)):
     return await delete_unused_record("power_of_attorneys", record_id, user, request, "Surat Kuasa", [
-        ("accounts", "surat_kuasa_id"), ("assignments", "power_of_attorney_id"), ("assignment_letters", "surat_kuasa_id"), ("documents", "ref_id")])
+        ("accounts", "surat_kuasa_id"), ("assignments", "power_of_attorney_id"), ("assignment_letters", "surat_kuasa_id")])
 
 
 @api_router.delete("/akun/{record_id}")
 @transactional
 async def delete_account(record_id: str, request: Request, user: dict = Depends(admin_required)):
     return await delete_unused_record("accounts", record_id, user, request, "Kontrak/Unit", [
-        ("assignments", "account_id"), ("assignment_letters", "account_ids"), ("field_reports", "account_id")])
+        ("assignments", "account_id"), ("assignment_letters", "account_ids"), ("assignment_letters", "account_id"), ("field_reports", "account_id")])
 
 
 @api_router.delete("/petugas/{record_id}")
 @transactional
 async def delete_petugas(record_id: str, request: Request, user: dict = Depends(admin_required)):
     return await delete_unused_record("users", record_id, user, request, "Petugas", [
-        ("assignments", "officer_id"), ("assignments", "officer_ids"), ("assignment_letters", "petugas_id"), ("assignment_letters", "petugas_ids"), ("field_reports", "petugas_id"), ("documents", "officer_id")], {"role": "petugas"})
+        ("assignments", "officer_id"), ("assignments", "officer_ids"), ("assignment_letters", "petugas_id"), ("assignment_letters", "petugas_ids"), ("field_reports", "petugas_id"), ("field_reports", "petugas_ids"), ("documents", "officer_id")], {"role": "petugas"})
 
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(admin_required), search: Optional[str] = None, response: Response = None, page: int = Query(1, ge=1), limit: int = Query(500, ge=1, le=1000)):
@@ -1794,6 +1807,7 @@ import leasing_payments
 import finance
 import pks
 import whatsapp
+import record_deletion
 import app_branding
 import owner_workflow
 import sys
@@ -1804,6 +1818,7 @@ pks.register(api_router, sys.modules[__name__])
 owner_workflow.register(api_router, sys.modules[__name__])
 whatsapp.register(api_router, sys.modules[__name__])
 app_branding.register(api_router, sys.modules[__name__])
+record_deletion.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)
 

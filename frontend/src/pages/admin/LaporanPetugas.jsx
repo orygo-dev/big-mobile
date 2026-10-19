@@ -1,3 +1,4 @@
+import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "@/lib/api";
@@ -100,6 +101,7 @@ export default function LaporanPetugas() {
                     </td>
                     <td className="px-5 py-3 text-right">
                       <button onClick={() => navigate(`/admin/laporan/${r.id}`)} className="text-blue-600 hover:text-blue-800 p-1.5" data-testid={`laporan-view-${r.id}`}><Eye className="w-4 h-4" /></button>
+                      <DeleteDataButton endpoint={`/laporan/${r.id}`} name={`Laporan ${r.letter_nomor || r.id}`} testId={`laporan-delete-${r.id}`} onDeleted={load} description="Foto dan bukti pembayaran laporan ikut dihapus. Jika sudah dibayar, nominal dikeluarkan dari pengeluaran dan profit dihitung ulang. WhatsApp yang sudah dikirim tidak dapat ditarik kembali."/>
                       {!r.payment_proof && <button onClick={()=>navigate(`/admin/laporan/${r.id}#pembayaran`)} className="text-xs font-semibold text-orange-700 ml-2" data-testid={`laporan-pay-${r.id}`}>Upload Bukti Pembayaran</button>}
                     </td>
                   </tr>

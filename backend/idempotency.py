@@ -30,6 +30,8 @@ def decorator(database_getter, runner):
                 db = database_getter()
                 existing = await db.idempotency.find_one({"id": key, "company_id": user["company_id"]})
                 if existing:
+                    if existing.get("deleted"):
+                        raise HTTPException(status_code=409, detail="Data dari permintaan ini sudah dihapus. Muat ulang formulir untuk membuat record baru.")
                     if existing["fingerprint"] != fingerprint:
                         raise HTTPException(status_code=409, detail="Kunci permintaan sudah dipakai untuk data berbeda")
                     return existing["response"]

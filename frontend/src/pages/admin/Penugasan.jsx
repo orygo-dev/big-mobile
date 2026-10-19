@@ -1,3 +1,4 @@
+import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "@/lib/api";
@@ -62,6 +63,7 @@ export default function Penugasan() {
                 <p className="text-slate-700"><span className="text-slate-400">Unit:</span> {l.accounts?.[0]?.nama_debitur || "-"} · {l.accounts?.[0]?.nomor_polisi || "-"}</p>
                 <p className="text-slate-500 text-xs mt-1">Dibuat {formatDate(l.tanggal)}</p>
               </div>
+              <div className="mt-3 flex justify-end"><DeleteDataButton endpoint={l.assignment_id ? `/penugasan/${l.assignment_id}` : `/surat-tugas/${l.id}`} name={`Penugasan ${l.document_number || l.nomor}`} testId={`penugasan-delete-${l.id}`} description="Surat tugas dan percakapan terkait ikut dihapus; unit dilepas jika masih aktif pada penugasan ini. Hapus laporan terkait terlebih dahulu. Pesan WhatsApp yang sudah dikirim tidak dapat ditarik kembali." onDeleted={()=>{load();window.dispatchEvent(new Event('big-mobile-approval-changed'));window.dispatchEvent(new Event('big-mobile-chat-read'));}}/></div>
               <button onClick={() => navigate(`/admin/surat-tugas/${l.id}/dokumen`)} className="mt-4 text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1" data-testid={`penugasan-view-st-${l.id}`}>
                 Lihat Surat Penugasan <ArrowRight className="w-3.5 h-3.5" />
               </button>
