@@ -51,7 +51,7 @@ def test_report_deletion_scopes_files_and_restores_only_matching_active_assignme
     db.accounts.find_one.return_value={'id':'unit','active_assignment_id':'task','status':server.ACCOUNT_STATUS_MAP['TIDAK_DITEMUKAN']}
     assert api.delete('/api/laporan/report').status_code==200
     scope=db.report_photos.delete_many.call_args.args[0]
-    assert scope=={'report_id':'report','company_id':ADMIN['company_id']}
+    assert scope=={'report_id':'report','$or':[{'company_id':ADMIN['company_id']},{'company_id':None}]}
     assert db.accounts.update_one.call_args.args[0]['active_assignment_id']=='task'
     assert db.accounts.update_one.call_args.args[1]['$set']['status']=='DITUGASKAN'
     assert db.audit_logs.insert_one.call_args.args[0]['deleted_data']['payment_amount']=='500000.00'

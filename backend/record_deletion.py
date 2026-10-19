@@ -80,9 +80,10 @@ def register(router, runtime):
             restore=(report.get('account_snapshot') or {}).get('status') or 'DITUGASKAN'
             await runtime.db.accounts.update_one({'id':account['id'],'company_id':user['company_id'],'active_assignment_id':report['assignment_id'],'status':expected},{'$set':{'status':restore,'updated_at':runtime.now_iso()}})
         await audit(runtime,user,request,'laporan lapangan',report,(data or DeletionInput()).reason)
-        photos=await runtime.db.report_photos.find({'report_id':identity,'company_id':user['company_id']}).to_list(None)
+        photo_scope={'report_id':identity,'$or':[{'company_id':user['company_id']},{'company_id':None}]}
+        photos=await runtime.db.report_photos.find(photo_scope).to_list(None)
         await cleanup(runtime,user,photos)
-        await runtime.db.report_photos.delete_many({'report_id':identity,'company_id':user['company_id']})
+        await runtime.db.report_photos.delete_many(photo_scope)
         await cancel_notifications(runtime,user,identity)
         await runtime.db.field_reports.delete_one(scope)
         return {'ok':True}

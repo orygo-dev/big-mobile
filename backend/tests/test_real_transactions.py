@@ -734,6 +734,8 @@ def test_correction_delete_paid_report_assignment_and_master_chain_is_atomic(liv
     proof=call('admin','POST','/surat-kuasa/'+sk['id']+'/file',files={'file':('SK.pdf',output.getvalue(),'application/pdf')}).json()
     baseline=call('owner','GET','/dashboard/finance').json()
     report=call('admin','POST','/laporan',data=report_payload(letter,account),files={**report_files(),'payment_proof':('paid.png',report_files()['photos'][1],'image/png')}).json()
+    first_photo=db.report_photos.find_one({'report_id':report['id']})
+    db.report_photos.update_one({'id':first_photo['id']},{'$unset':{'company_id':''}}) # Legacy metadata also needs removal.
     current=call('owner','GET','/dashboard/finance').json()
     assert Decimal(current['expense'])-Decimal(baseline['expense'])==Decimal('500000')
     call('admin','DELETE','/penugasan/'+letter['assignment_id'],409,json={'reason':'Salah input'})

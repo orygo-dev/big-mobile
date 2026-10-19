@@ -58,7 +58,7 @@ def register(router, runtime):
         path = f"{runtime.APP_NAME}/companies/{user['company_id']}/reports/{report_id}/{identity}.{prepared['extension']}"
         await runtime.db.upload_intents.insert_one({"id": path, "company_id": user["company_id"], "storage_path": path, "created_at": datetime.now(timezone.utc)})
         await run_in_threadpool(runtime.put_object, path, prepared["content"], prepared["content_type"])
-        return {"id": identity, "report_id": report_id, "storage_path": path, "url": "/api/files/"+path, "kind": prepared["kind"], "name": prepared["name"], "content_type": prepared["content_type"], "size": len(prepared["content"]), "created_at": runtime.now_iso()}
+        return {"id": identity, "company_id": user["company_id"], "report_id": report_id, "storage_path": path, "url": "/api/files/"+path, "kind": prepared["kind"], "name": prepared["name"], "content_type": prepared["content_type"], "size": len(prepared["content"]), "created_at": runtime.now_iso()}
 
     async def persist_files(files, user):
         for item in files:
@@ -66,7 +66,7 @@ def register(router, runtime):
             await runtime.db.upload_intents.delete_one({"id": item["storage_path"], "company_id": user["company_id"]})
 
     def public_file(item):
-        return {key: value for key, value in item.items() if key not in {"storage_path", "report_id"}}
+        return {key: value for key, value in item.items() if key not in {"storage_path", "report_id", "company_id"}}
 
     @router.get("/laporan-options")
     async def options(page: int = Query(1, ge=1), limit: int = Query(100, ge=1, le=500), user: dict = Depends(runtime.admin_required)):
