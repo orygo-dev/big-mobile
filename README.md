@@ -186,3 +186,12 @@ Menghapus penugasan/surat tugas juga menghapus surat dan chat terkait; unit dile
 Akses file hilang segera setelah metadata induknya dihapus. Pembersihan objek fisik dijadwalkan melalui jurnal penyimpanan yang sudah ada; worker menghapus objek tak lagi direferensikan setelah jeda satu jam, sehingga kegagalan storage tidak menyebabkan penghapusan DB setengah jalan.
 
 Pembaruan aaPanel: jalankan `deploy/update-crud-deletion.sh` sebagai root. Skrip mencadangkan kode, memperbarui file backend/UI, membangun frontend dan menunggu health siap. Skrip hanya memasang kemampuan hapus; tidak menghapus record produksi apa pun dengan sendirinya.
+
+
+### Kompatibilitas penghapusan dan output surat tanpa BASTK
+
+Tombol hapus memakai `POST /api/<menu>/<id>/delete` untuk mendukung instalasi yang menolak metode DELETE. Seluruh endpoint DELETE tetap tersedia; kedua metode menggunakan handler, transaksi, validasi kepemilikan dan audit yang sama. Jika backend lama mengembalikan route tidak tersedia (404 standar atau 405) pada POST, frontend mencoba REST DELETE satu kali. Error 403/409/500 dan timeout tidak diulang melalui metode lain agar tidak menimbulkan penghapusan ganda atau menyamarkan kegagalan.
+
+Halaman dokumen surat tugas, cetak, dan unduh PDF kini hanya merender isi surat kuasa substitusi; lampiran BASTK per kendaraan dihapus dari output. Data penugasan, unit, nomor register serta isi aturan surat tidak dihapus atau diubah oleh perubahan tampilan ini. Isi surat yang panjang tetap dapat mengalir ke halaman berikutnya sesuai jumlah petugas/unit.
+
+Pembaruan aaPanel: jalankan `deploy/update-delete-and-print.sh`. Skrip memasang backend dan frontend dari revisi yang sama, membuat build, restart service, menunggu health, lalu memeriksa POST route seluruh menu melalui localhost serta APP_BASE_URL bila tersedia. Pemeriksaan tanpa sesi harus mendapatkan HTTP 401, bukan 404/405 atau HTML halaman web. Pemeriksaan tidak menghapus record produksi. Jika pemeriksaan gagal, skrip tidak melaporkan instalasi berhasil; periksa service dan proxy Apache. Tidak perlu menonaktifkan proteksi server.
