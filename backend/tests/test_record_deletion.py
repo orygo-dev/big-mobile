@@ -88,3 +88,25 @@ def test_idempotency_cache_cannot_return_a_deleted_creation(local_api):
     result=api.post('/api/clients',json={'nama_perusahaan':'Leasing'},headers={'Idempotency-Key':'deleted-example-request'})
     assert result.status_code==409 and 'sudah dihapus' in result.text
     db.clients.insert_one.assert_not_called()
+
+
+@pytest.mark.parametrize('role',['admin','owner'])
+@pytest.mark.parametrize('path,collection',[("clients","clients"),("surat-kuasa","power_of_attorneys"),("akun","accounts"),("petugas","users"),("penugasan","assignments"),("surat-tugas","assignment_letters"),("laporan","field_reports"),("leasing-payments","documents"),("pks","documents")])
+def test_post_delete_alias_is_available_for_every_menu_and_staff_role(local_api,path,collection,role):
+    api,db=local_api
+    actor={**ADMIN,'role':role}
+    server.app.dependency_overrides[server.admin_required]=lambda:actor
+    target=getattr(db,collection)
+    target.find_one.return_value={'id':'record','account_id':'unit'}
+    response=api.post('/api/'+path+'/record/delete',json={'reason':'Koreksi salah input'})
+    assert response.status_code==200,response.text
+    assert target.delete_one.call_args.args[0]['company_id']==ADMIN['company_id']
+    assert db.audit_logs.insert_one.call_args.args[0]['deletion_reason']=='Koreksi salah input'
+
+@pytest.mark.parametrize('path',['clients','surat-kuasa','akun','petugas',*PATHS,'admin-users'])
+def test_post_delete_alias_does_not_bypass_authentication_or_officer_permissions(local_api,path):
+    api,db=local_api
+    server.app.dependency_overrides.pop(server.admin_required)
+    assert api.post('/api/'+path+'/record/delete',json={'reason':'Salah input'}).status_code==401
+    db.users.find_one.return_value=OFFICER
+    assert api.post('/api/'+path+'/record/delete',headers=bearer(OFFICER),json={'reason':'Salah input'}).status_code==403

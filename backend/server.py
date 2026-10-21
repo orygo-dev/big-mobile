@@ -617,6 +617,7 @@ async def delete_unused_record(collection_name, record_id, user, request, label,
     return {"ok": True}
 
 
+@api_router.post("/clients/{record_id}/delete")
 @api_router.delete("/clients/{record_id}")
 @transactional
 async def delete_client(record_id: str, request: Request, user: dict = Depends(admin_required)):
@@ -625,6 +626,7 @@ async def delete_client(record_id: str, request: Request, user: dict = Depends(a
         ("assignments", "client_id"), ("assignment_letters", "client_id"), ("debtors", "client_id"), ("documents", "client_id")])
 
 
+@api_router.post("/surat-kuasa/{record_id}/delete")
 @api_router.delete("/surat-kuasa/{record_id}")
 @transactional
 async def delete_sk(record_id: str, request: Request, user: dict = Depends(admin_required)):
@@ -632,6 +634,7 @@ async def delete_sk(record_id: str, request: Request, user: dict = Depends(admin
         ("accounts", "surat_kuasa_id"), ("assignments", "power_of_attorney_id"), ("assignment_letters", "surat_kuasa_id")])
 
 
+@api_router.post("/akun/{record_id}/delete")
 @api_router.delete("/akun/{record_id}")
 @transactional
 async def delete_account(record_id: str, request: Request, user: dict = Depends(admin_required)):
@@ -639,6 +642,7 @@ async def delete_account(record_id: str, request: Request, user: dict = Depends(
         ("assignments", "account_id"), ("assignment_letters", "account_ids"), ("assignment_letters", "account_id"), ("field_reports", "account_id")])
 
 
+@api_router.post("/petugas/{record_id}/delete")
 @api_router.delete("/petugas/{record_id}")
 @transactional
 async def delete_petugas(record_id: str, request: Request, user: dict = Depends(admin_required)):

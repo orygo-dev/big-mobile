@@ -36,6 +36,16 @@ def test_apache_pdf_framing_policy(tmp_path):
             self.end_headers()
             self.wfile.write(pdf.getvalue())
 
+        def do_POST(self):
+            import json
+            size=int(self.headers.get('Content-Length','0'))
+            body=json.loads(self.rfile.read(size))
+            assert self.path=='/api/laporan/correction/delete' and body['reason']=='Koreksi salah input'
+            self.send_response(200)
+            self.send_header('Content-Type','application/json')
+            self.end_headers()
+            self.wfile.write(b'{"ok":true}')
+
         def log_message(self, *_):
             pass
 
@@ -105,7 +115,9 @@ SSLCertificateKeyFile "{tmp_path}/qa.key"
         policy = preview.headers['Content-Security-Policy']
         assert "frame-ancestors 'self'" in policy
         assert "frame-ancestors 'none'" not in policy and policy.count('frame-ancestors') == 1
-        other = requests.get(origin+'/api/health', verify=str(tmp_path/'qa.crt'), timeout=5)
+        deletion=requests.post(origin+'/api/laporan/correction/delete',json={'reason':'Koreksi salah input'},verify=str(tmp_path/'qa.crt'),timeout=5)
+        assert deletion.status_code==200 and deletion.json()=={'ok':True}
+        other = requests.get(origin+'/api/health' , verify=str(tmp_path/'qa.crt'), timeout=5)
         assert other.headers['X-Frame-Options'] == 'DENY'
     finally:
         process.terminate()

@@ -16,7 +16,15 @@ export default function DeleteDataButton({ endpoint, name, onDeleted, testId, de
     setBusy(true);
     try {
       setError("");
-      await api.delete(endpoint, {data: {reason: reason.trim()}});
+      try {
+        await api.post(`${endpoint}/delete`, {reason: reason.trim()});
+      } catch (error) {
+        const status = error.response?.status;
+        const missingRoute = status === 404 && error.response?.data?.detail === "Not Found";
+        if (status !== 405 && !missingRoute) throw error;
+        // Older backends may provide only REST DELETE. Never retry an ambiguous error.
+        await api.delete(endpoint, {data: {reason: reason.trim()}});
+      }
       toast.success("Data berhasil dihapus");
       setOpen(false); setReason("");
       onDeleted?.();

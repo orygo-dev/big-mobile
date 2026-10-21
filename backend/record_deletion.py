@@ -50,11 +50,13 @@ def register(router, runtime):
         await runtime.db.assignments.delete_one({'id':identity,'company_id':user['company_id']})
         return {'ok':True}
 
+    @router.post('/penugasan/{identity}/delete')
     @router.delete('/penugasan/{identity}')
     @runtime.transactional
     async def delete_assignment(identity:str, request:Request, data:DeletionInput=Body(default=None), user:dict=Depends(runtime.admin_required)):
         return await remove_assignment(identity,request,data,user)
 
+    @router.post('/surat-tugas/{identity}/delete')
     @router.delete('/surat-tugas/{identity}')
     @runtime.transactional
     async def delete_letter(identity:str, request:Request, data:DeletionInput=Body(default=None), user:dict=Depends(runtime.admin_required)):
@@ -67,6 +69,7 @@ def register(router, runtime):
         await runtime.db.assignment_letters.delete_one({'id':identity,'company_id':user['company_id']})
         return {'ok':True}
 
+    @router.post('/laporan/{identity}/delete')
     @router.delete('/laporan/{identity}')
     @runtime.transactional
     async def delete_report(identity:str, request:Request, data:DeletionInput=Body(default=None), user:dict=Depends(runtime.admin_required)):
@@ -97,16 +100,19 @@ def register(router, runtime):
         await runtime.db.documents.delete_one(scope)
         return {'ok':True}
 
+    @router.post('/leasing-payments/{identity}/delete')
     @router.delete('/leasing-payments/{identity}')
     @runtime.transactional
     async def delete_payment(identity:str, request:Request, data:DeletionInput=Body(default=None), user:dict=Depends(runtime.admin_required)):
         return await delete_document(identity,'leasing_payment',request,data,user)
 
+    @router.post('/pks/{identity}/delete')
     @router.delete('/pks/{identity}')
     @runtime.transactional
     async def delete_pks(identity:str, request:Request, data:DeletionInput=Body(default=None), user:dict=Depends(runtime.admin_required)):
         return await delete_document(identity,'pks',request,data,user)
 
+    @router.post('/admin-users/{identity}/delete')
     @router.delete('/admin-users/{identity}')
     @runtime.transactional
     async def delete_admin(identity:str, request:Request, data:DeletionInput=Body(default=None), user:dict=Depends(runtime.owner_required)):
