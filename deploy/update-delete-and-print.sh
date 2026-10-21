@@ -3,10 +3,12 @@
 set -euo pipefail
 cd /www/wwwroot/big.rebornpartner.xyz
 stage=$(mktemp -d)
-base=https://raw.githubusercontent.com/orygo-dev/big-mobile/c16dbb03e274943ff898dfee1a32cb2e94b78351
+base=https://raw.githubusercontent.com/orygo-dev/big-mobile/0b0cd2daf2504e51c629d5849bd32db8892dc93d
 files=(
   backend/server.py
   backend/database.py
+  backend/requirements-production.txt
+  backend/requirements-production.lock
   backend/idempotency.py
   backend/record_deletion.py
   backend/admin_reports.py
@@ -37,6 +39,7 @@ for file in "${files[@]}"; do
   if [ -f "$file" ]; then cp -p "$file" "$stage/backup/$file"; fi
   install -m 644 "$stage/new/$file" "$file"
 done
+.venv/bin/python -m pip install --require-hashes -r backend/requirements-production.lock
 REACT_APP_BACKEND_URL='' npm --prefix frontend run build
 systemctl restart big-mobile
 for attempt in $(seq 1 30); do
