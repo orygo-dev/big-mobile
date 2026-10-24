@@ -1,5 +1,5 @@
 import DeleteDataButton from "@/components/DeleteDataButton";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import api, { errMsg, fileUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Car, Loader2, Search, ClipboardList, ChevronLeft, ChevronRight, Plus, F
 import { toast } from "sonner";
 
 const STATUS_OPTS = Object.keys(ACCOUNT_STATUS);
+const PdfStampEditor = lazy(() => import('@/components/PdfStampEditor'));
 const EMPTY_ACC = {
   nomor_kontrak: "", nama_debitur: "", nik: "", telepon: "", alamat: "",
   provinsi: "", kabupaten: "", kecamatan: "", kelurahan: "", nomor_polisi: "",
@@ -43,6 +44,8 @@ export default function AkunUnit() {
   const [saving, setSaving] = useState(false);
   // Document preview
   const [preview, setPreview] = useState(null); // { url, label }
+  const [stampOpen, setStampOpen] = useState(false);
+  const [stampBusy, setStampBusy] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -145,7 +148,7 @@ export default function AkunUnit() {
                     <td className="px-3 py-3 text-slate-500 text-xs">{a.client_name}</td>
                     <td className="px-3 py-3">
                       {a.surat_kuasa_file ? (
-                        <button onClick={() => setPreview({ url: a.surat_kuasa_file, label: a.surat_kuasa_nomor })}
+                        <button onClick={() => { setStampOpen(false); setPreview({ url: a.surat_kuasa_file, label: a.surat_kuasa_nomor, skId: a.surat_kuasa_id }); }}
                           className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-xs font-medium" data-testid={`akun-doc-${a.id}`}>
                           <FileText className="w-3.5 h-3.5" /> Lihat
                         </button>
@@ -243,13 +246,14 @@ export default function AkunUnit() {
       </Dialog>
 
       {/* Document preview dialog */}
-      <Dialog open={!!preview} onOpenChange={(v) => { if (!v) setPreview(null); }}>
-        <DialogContent className="sm:max-w-3xl" data-testid="akun-doc-preview">
+      <Dialog open={!!preview} onOpenChange={(v) => { if (!v && !stampBusy) { setPreview(null); setStampOpen(false); } }}>
+        <DialogContent className={`${stampOpen ? 'sm:max-w-5xl' : 'sm:max-w-3xl'} max-h-[95vh] overflow-y-auto`} data-testid="akun-doc-preview">
           <DialogHeader><DialogTitle className="font-heading text-base">Dokumen Surat Kuasa {preview?.label}</DialogTitle></DialogHeader>
-          {preview && (
+          {preview && stampOpen ? <Suspense fallback={<p className="p-6">Memuat editor PDF…</p>}><PdfStampEditor skId={preview.skId} onBusyChange={setStampBusy} onCancel={() => setStampOpen(false)} onSaved={url => { setPreview(p => ({ ...p, url })); setStampOpen(false); load(); }} /></Suspense> : preview && (
             <div className="space-y-3">
               <iframe title="Surat Kuasa" src={fileUrl(preview.url)} className="w-full h-[70vh] rounded-xl border border-slate-200" />
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2 flex-wrap">
+                <Button variant="outline" onClick={() => setStampOpen(true)} disabled={!preview.skId} data-testid="akun-doc-stamp"><Pencil className="w-4 h-4 mr-1" />Tambahkan Tanda Tangan/Stempel</Button>
                 <a href={fileUrl(preview.url)} target="_blank" rel="noreferrer" download
                   className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-xl" data-testid="akun-doc-download">
                   <Download className="w-4 h-4" /> Download PDF

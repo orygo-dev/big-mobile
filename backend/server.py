@@ -1813,6 +1813,7 @@ import pks
 import whatsapp
 import record_deletion
 import app_branding
+import pdf_stamp
 import owner_workflow
 import sys
 admin_reports.register(api_router, sys.modules[__name__])
@@ -1822,6 +1823,7 @@ pks.register(api_router, sys.modules[__name__])
 owner_workflow.register(api_router, sys.modules[__name__])
 whatsapp.register(api_router, sys.modules[__name__])
 app_branding.register(api_router, sys.modules[__name__])
+pdf_stamp.register(api_router, sys.modules[__name__])
 record_deletion.register(api_router, sys.modules[__name__])
 chat.register(api_router, sys.modules[__name__])
 app.include_router(api_router)

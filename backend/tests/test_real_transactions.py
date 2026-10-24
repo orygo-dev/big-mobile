@@ -79,6 +79,47 @@ def report_files():
     return {'photos': ('proof.png',output.getvalue(),'image/png')}
 
 
+def test_pdf_stamp_preserves_original_scopes_versions_and_rolls_back(live):
+    from pypdf import PdfWriter, PdfReader
+    import json
+    call, db = live['call'], live['db']
+    account, sk = unit(live)
+    writer = PdfWriter(); writer.add_blank_page(600, 800); writer.add_blank_page(800, 600).rotate(90)
+    output = io.BytesIO(); writer.write(output); original = output.getvalue()
+    uploaded = call('admin', 'POST', f"/surat-kuasa/{sk['id']}/file", files={'file': ('source.pdf', original, 'application/pdf')}).json()
+    info = call('owner', 'GET', f"/surat-kuasa/{sk['id']}/stamp-info").json()
+    assert len(info['versions']) == 1 and info['signature'].startswith('data:image/png;base64,')
+    version = info['versions'][0]
+    body = {'source_document_id': version['id'], 'expected_file_url': uploaded['file_url'], 'use_company_signature': 'true',
+            'placement': json.dumps({'page': 2, 'x': .5, 'y': .6, 'width': .3, 'height': .15})}
+    call('officer', 'GET', f"/surat-kuasa/{sk['id']}/stamp-info", 403)
+    call('officer', 'POST', f"/surat-kuasa/{sk['id']}/stamp", 403, data=body)
+    call('foreign', 'GET', f"/surat-kuasa/{sk['id']}/stamp-info", 404)
+    call('foreign', 'POST', f"/surat-kuasa/{sk['id']}/stamp", 404, data=body)
+    before = db.documents.count_documents({'ref_id': sk['id']})
+    db.block_writes('audit_logs', True)
+    try:
+        call('admin', 'POST', f"/surat-kuasa/{sk['id']}/stamp", 500, data=body)
+        assert db.documents.count_documents({'ref_id': sk['id']}) == before
+        assert db.power_of_attorneys.find_one({'id': sk['id']})['file_url'] == uploaded['file_url']
+    finally:
+        db.block_writes('audit_logs', False)
+    stamped = call('admin', 'POST', f"/surat-kuasa/{sk['id']}/stamp", data=body).json()
+    saved = call('owner', 'GET', stamped['file_url'][4:]).content
+    pages = PdfReader(io.BytesIO(saved)).pages
+    assert len(pages) == 2 and not pages[0].images and len(pages[1].images) == 1
+    assert call('admin', 'GET', uploaded['file_url'][4:]).content == original
+    assert len(call('admin', 'GET', f"/surat-kuasa/{sk['id']}/stamp-info").json()['versions']) == 2
+    call('admin', 'POST', f"/surat-kuasa/{sk['id']}/stamp", 409, data=body)
+    assert db.documents.count_documents({'ref_id': sk['id']}) == 2
+    assert call('admin', 'GET', f"/akun/{account['id']}").json()['surat_kuasa_file'] == stamped['file_url']
+    # Officer preview continues using the existing assignment-scoped private file proxy.
+    assign(live, account)
+    assert call('officer', 'GET', stamped['file_url'][4:]).content == saved
+    call('outsider', 'GET', stamped['file_url'][4:], 404)
+    call('foreign', 'GET', stamped['file_url'][4:], 404)
+
+
 def test_assignment_failure_rolls_back_letter_unit_counter_and_audit(live):
     account,_=unit(live);db=live['db']
     audits=db.audit_logs.count_documents({})
