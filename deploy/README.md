@@ -2,6 +2,22 @@
 
 Arsitektur: Apache melayani build React dan meneruskan `/api/` ke FastAPI pada `127.0.0.1:8000`. FastAPI berjalan sebagai layanan systemd pengguna `bigmobile`. Database menggunakan MySQL/InnoDB; file private berada di `/var/lib/big-mobile/uploads`.
 
+
+## Editor tanda tangan/stempel Surat Kuasa (root big.rebornpartner.xyz)
+
+Pada Kontrak & Unit, klik **Lihat** dokumen lalu **Tambahkan Tanda Tangan/Stempel**. Pilih gambar dari Pengaturan atau unggah PNG/JPEG/WebP (maksimal 2MB dan 12 megapiksel), pilih halaman, geser gambar atau gunakan tombol panah, lalu atur ukuran dan zoom. **Simpan Salinan PDF** menjadikan hasil sebagai dokumen terbaru pada Surat Kuasa yang sama, termasuk semua unit yang menggunakannya. Gambar menyatu pada PDF untuk preview, unduh, dan cetak.
+
+Versi unggahan asli tidak ditimpa. Buka kembali editor dan pilih **Versi dokumen sumber** untuk membuka/mengunduh versi lama atau membuat salinan baru darinya. Untuk beberapa gambar, simpan gambar pertama lalu buka kembali editor pada hasil terakhir dan tambahkan gambar berikutnya. Hanya admin/owner dapat mengedit; akses petugas tetap mengikuti penugasannya. Audit Log mencatat pemasangan gambar. PDF dengan bidang tanda tangan digital ditolak agar tanda tangan digital tidak dibatalkan diam-diam; gunakan salinan PDF tanpa bidang tersebut. Fitur ini bukan tanda tangan elektronik tersertifikasi.
+
+Pembaruan khusus server yang sudah berjalan di `/www/wwwroot/big.rebornpartner.xyz`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orygo-dev/big-mobile/main/deploy/update-pdf-stamp.sh -o /tmp/update-pdf-stamp.sh &&
+bash /tmp/update-pdf-stamp.sh
+```
+
+Skrip mengunduh source pada commit yang dipatok di dalam skrip, menyimpan backup, memasang dependensi melalui venv/npm yang sudah ada, membangun frontend di direktori sementara, memeriksa backend, lalu menerbitkan HTML terakhir. Kegagalan memulihkan source dan HTML sebelumnya; dependensi patch yang sudah diperbarui tidak diturunkan. File `.user.ini`, `/etc/big-mobile/app.env`, data database dan PDF yang sudah tersimpan tidak diubah oleh skrip. Tidak membutuhkan layanan aaPanel tambahan, perubahan Apache, atau migrasi tabel. Setelah berhasil, muat ulang dengan Ctrl+F5.
+
 ## 1. Persiapan
 
 Gunakan Linux dengan systemd, Python 3.12 beserta modul venv, Node.js 22.20 atau versi 22 yang kompatibel, Git, dan MySQL **8.4 LTS** atau MariaDB **10.11+**. MySQL minimal 8.0.21; MariaDB 10.11+ juga didukung. Instal Apache dan MySQL melalui aaPanel. Aktifkan modul Apache `proxy`, `proxy_http`, `headers`, `rewrite`, `ssl`. Nama/path layanan Apache aaPanel berbeda dari paket distro; gunakan panel untuk mengaktifkan modul dan memuat ulang konfigurasi.
