@@ -118,6 +118,20 @@ def test_pdf_stamp_preserves_original_scopes_versions_and_rolls_back(live):
     assert call('officer', 'GET', stamped['file_url'][4:]).content == saved
     call('outsider', 'GET', stamped['file_url'][4:], 404)
     call('foreign', 'GET', stamped['file_url'][4:], 404)
+    # Failure journals are deliberately retained for reconciliation. Clean only this
+    # test's unreferenced upload after checking rollback, so other tests sharing
+    # the module fixture can still assert their own uploads leave no journals.
+    import re
+    prefix = db.documents.find_one({'id': version['id']})['storage_path'].rsplit('/', 1)[0] + '/'
+    orphaned = list(db.upload_intents.find({'company_id': account['company_id'], 'storage_path': {'$regex': '^' + re.escape(prefix)}}))
+    assert len(orphaned) == 1
+    for intent in orphaned:
+        assert not db.documents.find_one({'storage_path': intent['storage_path']})
+        storage_root = (live['temporary'] / 'uploads').resolve()
+        target = (storage_root / intent['storage_path']).resolve()
+        assert target.is_relative_to(storage_root)
+        target.unlink()
+        db.upload_intents.delete_one({'id': intent['id'], 'company_id': account['company_id']})
 
 
 def test_assignment_failure_rolls_back_letter_unit_counter_and_audit(live):
