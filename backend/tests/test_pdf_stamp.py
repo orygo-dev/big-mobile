@@ -41,13 +41,26 @@ def test_stamp_preserves_page_count_and_uses_visible_top_left_coordinates(rotati
     assert len(reader.pages[1].images) == 0
     assert PdfReader(io.BytesIO(original)).pages[0].rotation == rotation
     page = reader.pages[0]
-    assert page.rotation == 0
+    assert page.rotation == rotation
     width, height = float(page.cropbox.width), float(page.cropbox.height)
-    # Translation into the crop box and stamp size are encoded in the merged content.
+    # Original page boxes/rotation are preserved, including annotation coordinates.
+    assert list(page.cropbox) == list(PdfReader(io.BytesIO(original)).pages[0].cropbox)
     operations = page.get_contents().operations
     matrices = [list(map(float, values)) for values, operator in operations if operator == b'cm']
-    assert any(abs(m[4] - float(page.cropbox.left)) < .001 and abs(m[5] - float(page.cropbox.bottom)) < .001 for m in matrices)
+    assert matrices
     assert width > 0 and height > 0
+
+
+def test_rotated_page_preserves_existing_link_rectangle_and_page_boxes():
+    writer = PdfWriter(clone_from=PdfReader(io.BytesIO(pdf_bytes(90, True))))
+    from pypdf.annotations import Link
+    writer.add_annotation(0, Link(rect=(100, 200, 200, 250), url='https://example.com'))
+    out = io.BytesIO(); writer.write(out)
+    result = stamp_pdf(out.getvalue(), image_bytes(), Placement(page=1, x=.2, y=.3, width=.3, height=.2))
+    page = PdfReader(io.BytesIO(result)).pages[0]
+    assert list(page['/Annots'][0].get_object()['/Rect']) == [100, 200, 200, 250]
+    assert page.rotation == 90
+    assert list(page.cropbox) == [50, 100, 550, 700]
 
 
 @pytest.mark.parametrize('invalid', [

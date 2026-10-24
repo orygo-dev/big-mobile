@@ -75,6 +75,7 @@ export default function PdfStampEditor({ skId, onSaved, onCancel, onBusyChange }
       if (!active) return;
       const original = pdfPage.getViewport({ scale: 1 });
       const viewport = pdfPage.getViewport({ scale: Math.min(available, 760) * zoom / original.width });
+      if (!Number.isFinite(viewport.height) || viewport.height > 16000 || viewport.width * viewport.height > 12000000) throw new Error('Page too large');
       setSize({ width: viewport.width, height: viewport.height });
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       const element = canvas.current;

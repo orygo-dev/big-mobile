@@ -64,9 +64,29 @@ def stamp_pdf(content, image, placement):
         raise StampError('Halaman yang dipilih tidak ditemukan')
     writer = PdfWriter(clone_from=reader)
     page = writer.pages[placement.page - 1]
-    page.transfer_rotation_to_content()
-    box = page.cropbox
-    width, height = float(box.width), float(box.height)
+    # Keep page rotation/boxes and annotation rectangles intact. Map the visible
+    # (rotated) crop viewport back into PDF coordinates instead of rotating the
+    # source contents, which could misplace existing links and form widgets.
+    crop, media = page.cropbox, page.mediabox
+    crop_left, crop_right = sorted((float(crop.left), float(crop.right)))
+    crop_bottom, crop_top = sorted((float(crop.bottom), float(crop.top)))
+    media_left, media_right = sorted((float(media.left), float(media.right)))
+    media_bottom, media_top = sorted((float(media.bottom), float(media.top)))
+    left, bottom = max(crop_left, media_left), max(crop_bottom, media_bottom)
+    right, top = min(crop_right, media_right), min(crop_top, media_top)
+    if right <= left or top <= bottom:
+        left, bottom, right, top = media_left, media_bottom, media_right, media_top
+    raw_width, raw_height = right - left, top - bottom
+    rotation = page.rotation % 360
+    transforms = {
+        0: (1, 0, 0, 1, left, bottom),
+        90: (0, 1, -1, 0, right, bottom),
+        180: (-1, 0, 0, -1, right, top),
+        270: (0, -1, 1, 0, left, top),
+    }
+    if rotation not in transforms:
+        raise StampError('Rotasi halaman PDF tidak didukung')
+    width, height = (raw_height, raw_width) if rotation in {90, 270} else (raw_width, raw_height)
     if not (1 <= width <= 14400 and 1 <= height <= 14400):
         raise StampError('Ukuran halaman PDF tidak didukung')
     overlay = io.BytesIO()
@@ -76,8 +96,7 @@ def stamp_pdf(content, image, placement):
                      placement.width * width, placement.height * height,
                      mask='auto', preserveAspectRatio=True, anchor='c')
     canvas.save()
-    page.merge_transformed_page(PdfReader(overlay).pages[0],
-                                Transformation().translate(float(box.left), float(box.bottom)))
+    page.merge_transformed_page(PdfReader(overlay).pages[0], Transformation(transforms[rotation]))
     output = io.BytesIO()
     writer.write(output)
     result = output.getvalue()
@@ -116,7 +135,7 @@ def register(router, runtime):
             raise HTTPException(409, 'Dokumen telah berubah. Tutup editor dan buka kembali sebelum menyimpan.')
         scope = {'id': source_document_id, 'company_id': user['company_id'], 'kind': 'surat_kuasa', 'ref_id': sk_id}
         source = await runtime.db.documents.find_one(scope)
-        if not source or not source.get('storage_path', '').startswith(f"{runtime.APP_NAME}/companies/{user['company_id']}/"):
+        if not source or not isinstance(source.get('storage_path'), str) or not source['storage_path'].startswith(f"{runtime.APP_NAME}/companies/{user['company_id']}/"):
             raise HTTPException(404, 'Dokumen sumber tidak ditemukan')
         try:
             position = Placement.model_validate_json(placement)
@@ -128,6 +147,8 @@ def register(router, runtime):
             if use_company_signature:
                 company = await runtime.db.companies.find_one({'id': user['company_id']}) or {}
                 data_url = company.get('director_signature', '')
+                if not isinstance(data_url, str):
+                    raise ValueError('Tanda tangan pengaturan tidak tersedia')
                 prefix, encoded = data_url.split(',', 1)
                 if prefix != 'data:image/png;base64' or len(encoded) > MAX_IMAGE * 2:
                     raise ValueError('Tanda tangan pengaturan tidak valid')
