@@ -44,7 +44,10 @@ export default function PdfStampEditor({ skId, onSaved, onCancel, onBusyChange }
   }, [skId]);
 
   useEffect(() => {
-    const observer = new ResizeObserver(entries => setAvailable(Math.max(240, entries[0].contentRect.width - 24)));
+    const observer = new ResizeObserver(entries => {
+      const width = Math.max(240, Math.floor(entries[0].contentRect.width));
+      setAvailable(previous => previous === width ? previous : width);
+    });
     observer.observe(scroller.current);
     return () => observer.disconnect();
   }, []);
@@ -119,9 +122,9 @@ export default function PdfStampEditor({ skId, onSaved, onCancel, onBusyChange }
     finally { onBusyChange?.(false); if (mounted.current) setBusy(false); }
   };
 
-  return <div className="space-y-3 min-w-0 w-full max-w-full" data-testid="pdf-stamp-editor">
-    <p className="text-sm text-slate-600">Pilih halaman, lalu klik halaman atau geser gambar ke posisi yang diinginkan. PDF asli tetap disimpan. Hasil menjadi dokumen terbaru untuk semua unit yang menggunakan Surat Kuasa ini.</p>
-    <fieldset disabled={busy} className="grid sm:grid-cols-2 gap-3 min-w-0">
+  return <div className="flex flex-col gap-3 h-full min-h-[600px] min-w-0 w-full max-w-full" data-testid="pdf-stamp-editor">
+    <p className="text-sm text-slate-600 shrink-0">Pilih halaman, lalu klik halaman atau geser gambar ke posisi yang diinginkan. PDF asli tetap disimpan. Hasil menjadi dokumen terbaru untuk semua unit yang menggunakan Surat Kuasa ini.</p>
+    <fieldset disabled={busy} className="grid sm:grid-cols-2 gap-3 min-w-0 shrink-0">
       <div className="min-w-0"><Label htmlFor="stamp-source">Versi dokumen sumber</Label><select id="stamp-source" className="border rounded-lg p-2 w-full max-w-full text-sm" value={sourceId} onChange={e => { setSourceId(e.target.value); setError(''); }}>
         {!sourceId && <option value="">Pilih dokumen</option>}
         {info?.versions.map((v, index) => <option key={v.id} value={v.id}>{v.stamped ? 'Hasil stempel' : 'Dokumen unggahan'} — {v.created_at ? new Date(v.created_at).toLocaleString('id-ID') : v.filename || index + 1}{v.url === info.current_file_url ? ' (terbaru)' : ''}</option>)}
@@ -139,10 +142,10 @@ export default function PdfStampEditor({ skId, onSaved, onCancel, onBusyChange }
         <Label htmlFor="stamp-zoom">Zoom</Label><select id="stamp-zoom" value={zoom} onChange={e => setZoom(Number(e.target.value))} className="border rounded p-1"><option value={1}>100%</option><option value={1.25}>125%</option><option value={1.5}>150%</option></select></div>
       <div><Label htmlFor="stamp-size">Ukuran gambar ({Math.round(width * 100)}% lebar halaman)</Label><input id="stamp-size" type="range" min=".05" max=".8" step=".005" value={position.width} onChange={e => setPosition(p => ({ ...p, width: Number(e.target.value) }))} className="w-full" /></div>
     </fieldset>
-    {(loadError || error) && <p role="alert" className="text-sm text-red-700 bg-red-50 rounded-lg p-3">{loadError || error}</p>}
-    <div ref={scroller} className="bg-slate-200 rounded-xl overflow-auto max-h-[52vh] p-3 min-w-0 w-full max-w-full" aria-busy={!rendered}>
-      {!rendered && !loadError && <p className="flex gap-2 items-center text-sm p-3"><Loader2 className="h-4 w-4 animate-spin" />Memuat halaman PDF…</p>}
-      <div ref={stage} data-testid="stamp-page-canvas" style={{ width: size.width, height: size.height, position: 'relative', display: rendered ? 'block' : 'none', margin: '0 auto' }}
+    {(loadError || error) && <p role="alert" className="text-sm text-red-700 bg-red-50 rounded-lg p-3 shrink-0">{loadError || error}</p>}
+    <div className="relative flex-1 min-h-[180px] min-w-0 w-full" data-testid="stamp-viewport">
+      <div ref={scroller} className="absolute inset-0 bg-slate-200 rounded-xl overflow-auto p-3" style={{ scrollbarGutter: 'stable' }} aria-busy={!rendered}>
+      <div ref={stage} data-testid="stamp-page-canvas" style={{ width: size.width, height: size.height, position: 'relative', visibility: rendered ? 'visible' : 'hidden', margin: '0 auto' }}
         onPointerDown={e => { if (e.target === canvas.current && !busy && aspect) moveTo(e.clientX, e.clientY); }}>
         <canvas ref={canvas} style={{ width: '100%', height: '100%' }} />
         {imageUrl && <button type="button" aria-label="Geser tanda tangan atau stempel" disabled={busy} data-testid="stamp-draggable" className="absolute border-2 border-dashed border-blue-500 focus:ring-2 ring-orange-400 cursor-move bg-transparent p-0" style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${width * 100}%`, height: height ? `${height * 100}%` : 'auto', touchAction: 'none' }}
@@ -156,8 +159,10 @@ export default function PdfStampEditor({ skId, onSaved, onCancel, onBusyChange }
           }} onError={() => { setAspect(0); setError('Gambar tidak dapat dibuka. Pilih gambar lain.'); }} />
         </button>}
       </div>
+      </div>
+      {!rendered && <div className="absolute inset-0 bg-slate-200 rounded-xl flex items-center justify-center p-4 text-sm" role="status">{loadError ? 'Halaman belum dapat ditampilkan.' : <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Memuat halaman PDF…</>}</div>}
     </div>
-    <p className="text-xs text-slate-500">Gunakan tombol panah saat gambar dipilih untuk menggeser secara presisi. Untuk menambahkan stempel berikutnya, buka kembali editor dan pilih versi hasil terakhir. Ini berupa gambar, bukan tanda tangan elektronik tersertifikasi.</p>
-    <div className="flex justify-between gap-2"><Button variant="outline" disabled={busy} onClick={onCancel}><ArrowLeft className="h-4 w-4 mr-1" />Kembali</Button><Button disabled={busy || !rendered || !aspect || !sourceId || !!loadError} onClick={save} data-testid="stamp-save">{busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}Simpan Salinan PDF</Button></div>
+    <p className="text-xs text-slate-500 shrink-0">Gunakan tombol panah saat gambar dipilih untuk menggeser secara presisi. Untuk menambahkan stempel berikutnya, buka kembali editor dan pilih versi hasil terakhir. Ini berupa gambar, bukan tanda tangan elektronik tersertifikasi.</p>
+    <div className="flex justify-between gap-2 shrink-0"><Button variant="outline" disabled={busy} onClick={onCancel}><ArrowLeft className="h-4 w-4 mr-1" />Kembali</Button><Button disabled={busy || !rendered || !aspect || !sourceId || !!loadError} onClick={save} data-testid="stamp-save">{busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}Simpan Salinan PDF</Button></div>
   </div>;
 }

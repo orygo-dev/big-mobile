@@ -247,12 +247,13 @@ export default function AkunUnit() {
 
       {/* Document preview dialog */}
       <Dialog open={!!preview} onOpenChange={(v) => { if (!v && !stampBusy) { setPreview(null); setStampOpen(false); } }}>
-        <DialogContent className={`${stampOpen ? 'sm:max-w-5xl' : 'sm:max-w-3xl'} max-h-[95vh] overflow-y-auto`} data-testid="akun-doc-preview">
-          <DialogHeader><DialogTitle className="font-heading text-base">Dokumen Surat Kuasa {preview?.label}</DialogTitle></DialogHeader>
-          {preview && stampOpen ? <Suspense fallback={<p className="p-6">Memuat editor PDF…</p>}><PdfStampEditor skId={preview.skId} onBusyChange={setStampBusy} onCancel={() => setStampOpen(false)} onSaved={url => { setPreview(p => ({ ...p, url })); setStampOpen(false); load(); }} /></Suspense> : preview && (
-            <div className="space-y-3">
-              <iframe title="Surat Kuasa" src={fileUrl(preview.url)} className="w-full h-[70vh] rounded-xl border border-slate-200" />
-              <div className="flex justify-end gap-2 flex-wrap">
+        <DialogContent className="sm:max-w-5xl h-[95vh] flex flex-col overflow-hidden" style={{height:'95dvh',animation:'none'}} data-testid="akun-doc-preview">
+          <DialogHeader className="shrink-0 pr-6"><DialogTitle className="font-heading text-base">Dokumen Surat Kuasa {preview?.label}</DialogTitle></DialogHeader>
+          <div className="flex-1 min-h-0 min-w-0 overflow-y-auto" style={{scrollbarGutter:'stable'}}>
+          {preview && stampOpen ? <Suspense fallback={<p className="p-6" role="status">Memuat editor PDF…</p>}><PdfStampEditor skId={preview.skId} onBusyChange={setStampBusy} onCancel={() => setStampOpen(false)} onSaved={url => { setPreview(p => ({ ...p, url })); setStampOpen(false); load(); }} /></Suspense> : preview && (
+            <div className="flex flex-col gap-3 h-full min-h-[300px]">
+              <iframe title="Surat Kuasa" src={fileUrl(preview.url)} className="w-full flex-1 min-h-0 rounded-xl border border-slate-200" />
+              <div className="flex justify-end gap-2 flex-wrap shrink-0">
                 <Button variant="outline" onClick={() => setStampOpen(true)} disabled={!preview.skId} data-testid="akun-doc-stamp"><Pencil className="w-4 h-4 mr-1" />Tambahkan Tanda Tangan/Stempel</Button>
                 <a href={fileUrl(preview.url)} target="_blank" rel="noreferrer" download
                   className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-xl" data-testid="akun-doc-download">
@@ -261,6 +262,7 @@ export default function AkunUnit() {
               </div>
             </div>
           )}
+          </div>
         </DialogContent>
       </Dialog>
 

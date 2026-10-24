@@ -56,8 +56,29 @@ try {
   const unit=await api('POST','akun',{nomor_kontrak:suffix,nama_debitur:'Browser Debitur '+suffix,client_id:client.id,surat_kuasa_id:sk.id});
   await ap.goto(origin+'/admin/akun');
   await ap.getByTestId('akun-doc-'+unit.id).click();
+  // Keep the loading state visible long enough to catch a shrinking/recentring
+  // modal, not just its final position after a fast render on CI.
+  await ap.route('**/api/surat-kuasa/'+sk.id+'/stamp-info', async route => {
+    await new Promise(resolve => setTimeout(resolve, 400)); await route.continue();
+  });
+  await ap.evaluate(() => {
+    window.stampLayoutSamples = []; window.stampLayoutRecording = true;
+    const sample = () => {
+      const rect = document.querySelector('[data-testid="akun-doc-preview"]')?.getBoundingClientRect();
+      if (rect) window.stampLayoutSamples.push({top:rect.top,left:rect.left,width:rect.width,height:rect.height});
+      if (window.stampLayoutRecording) requestAnimationFrame(sample);
+    }; requestAnimationFrame(sample);
+  });
   await ap.getByTestId('akun-doc-stamp').click();
   await ap.getByTestId('stamp-page-canvas').waitFor({state:'visible'});
+  await ap.getByLabel('Zoom',{exact:true}).selectOption('1.5');
+  await ap.getByTestId('stamp-page-canvas').waitFor({state:'visible'});
+  await ap.getByLabel('Zoom',{exact:true}).selectOption('1');
+  await ap.getByTestId('stamp-page-canvas').waitFor({state:'visible'});
+  const layoutSamples = await ap.evaluate(() => {window.stampLayoutRecording=false;return window.stampLayoutSamples;});
+  assert(layoutSamples.length>5,'Loading layout must be sampled across multiple frames');
+  for(const key of ['top','left','width','height']) assert(Math.max(...layoutSamples.map(s=>s[key]))-Math.min(...layoutSamples.map(s=>s[key]))<=2,'PDF modal must remain stable: '+key);
+  await ap.unroute('**/api/surat-kuasa/'+sk.id+'/stamp-info');
   const stampControl=ap.getByTestId('stamp-draggable');await stampControl.waitFor();
   const pageRect=await ap.getByTestId('stamp-page-canvas').boundingBox();
   await ap.getByTestId('stamp-page-canvas').click({position:{x:pageRect.width*.3,y:pageRect.height*.4}});
