@@ -7,7 +7,7 @@ test "$(pwd -P)" = "$root" || { echo 'Root project tidak sesuai.'; exit 1; }
 test -x .venv/bin/python && test -f frontend/package.json
 command -v npm >/dev/null
 stage=$(mktemp -d)
-base=https://raw.githubusercontent.com/orygo-dev/big-mobile/99b3f0eab7b1e9823591c6067f161b8e11a06c17
+base=https://raw.githubusercontent.com/orygo-dev/big-mobile/9b27932fdf5cf067289ad820b75ea06ef9bc1bfb
 files=(
   backend/server.py
   backend/pdf_stamp.py

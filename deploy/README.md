@@ -18,6 +18,17 @@ bash /tmp/update-pdf-stamp.sh
 
 Skrip mengunduh source pada commit yang dipatok di dalam skrip, menyimpan backup, memasang dependensi melalui venv/npm yang sudah ada, membangun frontend di direktori sementara, memeriksa backend, lalu menerbitkan HTML terakhir. Kegagalan memulihkan source dan HTML sebelumnya; dependensi patch yang sudah diperbarui tidak diturunkan. File `.user.ini`, `/etc/big-mobile/app.env`, data database dan PDF yang sudah tersimpan tidak diubah oleh skrip. Tidak membutuhkan layanan aaPanel tambahan, perubahan Apache, atau migrasi tabel. Setelah berhasil, muat ulang dengan Ctrl+F5.
 
+## Memperbaiki popup editor tanda tangan/stempel yang bergerak
+
+Pada server yang fitur editor PDF-nya sudah terpasang di `/www/wwwroot/big.rebornpartner.xyz`, jalankan:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orygo-dev/big-mobile/main/deploy/update-stamp-layout.sh -o /tmp/update-stamp-layout.sh &&
+bash /tmp/update-stamp-layout.sh
+```
+
+Pembaruan ini mempertahankan ukuran popup selama loading, pergantian halaman, dan zoom. Area dokumen tetap tersedia saat loading; indikator loading tampil di atasnya. Skrip hanya memperbarui dua source frontend, membangun hasil di direktori sementara, lalu memasang aset dan HTML terakhir. Kegagalan build memulihkan source sebelumnya. Backend tetap berjalan; konfigurasi Apache, `.user.ini`, database, dan file dokumen tetap tersimpan. Setelah berhasil, tekan Ctrl+F5 dan buka kembali editor.
+
 ## 1. Persiapan
 
 Gunakan Linux dengan systemd, Python 3.12 beserta modul venv, Node.js 22.20 atau versi 22 yang kompatibel, Git, dan MySQL **8.4 LTS** atau MariaDB **10.11+**. MySQL minimal 8.0.21; MariaDB 10.11+ juga didukung. Instal Apache dan MySQL melalui aaPanel. Aktifkan modul Apache `proxy`, `proxy_http`, `headers`, `rewrite`, `ssl`. Nama/path layanan Apache aaPanel berbeda dari paket distro; gunakan panel untuk mengaktifkan modul dan memuat ulang konfigurasi.

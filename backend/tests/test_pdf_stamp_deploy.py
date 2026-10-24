@@ -9,10 +9,13 @@ import pytest
 pytestmark = pytest.mark.skipif(os.name == 'nt', reason='Linux deployment smoke test')
 
 
-@pytest.mark.parametrize('failure', ['', 'build', 'health'])
-def test_staged_build_keeps_old_site_on_failure(tmp_path, failure):
+@pytest.mark.parametrize('script_name,failure', [
+    ('update-pdf-stamp.sh', ''), ('update-pdf-stamp.sh', 'build'), ('update-pdf-stamp.sh', 'health'),
+    ('update-stamp-layout.sh', ''), ('update-stamp-layout.sh', 'build'),
+])
+def test_staged_build_keeps_old_site_on_failure(tmp_path, script_name, failure):
     repo = Path(__file__).resolve().parents[2]
-    script = (repo / 'deploy/update-pdf-stamp.sh').read_text()
+    script = (repo / 'deploy' / script_name).read_text()
     root = tmp_path / 'project'; root.mkdir()
     source = tmp_path / 'download'; source.mkdir()
     binaries = tmp_path / 'bin'; binaries.mkdir()
@@ -20,6 +23,8 @@ def test_staged_build_keeps_old_site_on_failure(tmp_path, failure):
     for file in files:
         for base, text in [(root, 'old ' + file), (source, 'new ' + file)]:
             target = base / file; target.parent.mkdir(parents=True, exist_ok=True); target.write_text(text)
+    (root / 'frontend/node_modules/pdfjs-dist').mkdir(parents=True)
+    if not (root / 'frontend/package.json').exists(): (root / 'frontend/package.json').write_text('{}')
     build = root / 'frontend/build'; (build / 'assets').mkdir(parents=True)
     (build / 'index.html').write_text('old HTML'); (build / 'assets/old.js').write_text('old JS')
     protected = build / '.user.ini'; protected.write_text('protected aaPanel configuration'); protected.chmod(0o444)
@@ -66,4 +71,5 @@ fi
         assert result.returncode == 0, result.stdout + result.stderr
         assert (build / 'index.html').read_text() == 'new HTML'
         assert (build / 'assets/new.js').read_text() == 'new JS'
-        assert (tmp_path / 'calls').read_text().count('restart big-mobile') == 1
+        if script_name == 'update-pdf-stamp.sh': assert (tmp_path / 'calls').read_text().count('restart big-mobile') == 1
+        else: assert not (tmp_path / 'calls').exists()
