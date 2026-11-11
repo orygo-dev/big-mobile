@@ -30,6 +30,8 @@ jobs:
           REACT_APP_BACKEND_URL: ''
       - run: npx playwright install --with-deps chromium
         working-directory: frontend
+      - name: Dashboard navigation and responsive regression
+        run: node frontend/e2e/dashboard-theme.mjs
       - name: Native MySQL transaction tests
         run: |
           sudo systemctl start mysql

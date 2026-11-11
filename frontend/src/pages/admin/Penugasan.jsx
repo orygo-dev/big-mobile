@@ -1,3 +1,4 @@
+import {useCreateIntent} from '@/hooks/useListSearch';
 import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -23,6 +24,7 @@ export default function Penugasan() {
   const [letters, setLetters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  useCreateIntent(() => setDialogOpen(true));
 
   const load = () => {
     setLoading(true);

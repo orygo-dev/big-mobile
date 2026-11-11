@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
+import {AdminInboxContext} from '@/context/AdminInboxContext';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function ChatUnread() {
+  const shared = useContext(AdminInboxContext);
+  const hasShared = shared !== null;
   const [count, setCount] = useState(0);
   const previous = useRef(null);
   useEffect(() => {
+    if (hasShared) return;
     let alive = true;
     const refresh = async () => {
       if (document.hidden) return;
@@ -15,6 +19,7 @@ export default function ChatUnread() {
     window.addEventListener('big-mobile-chat-read', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => { alive = false; clearInterval(timer); window.removeEventListener('big-mobile-chat-read', refresh); document.removeEventListener('visibilitychange', refresh); };
-  }, []);
-  return count > 0 ? <span aria-label={`${count} pesan belum dibaca`} className="rounded-full bg-orange-500 px-1.5 text-[10px] font-bold text-white">{count > 99 ? '99+' : count}</span> : null;
+  }, [hasShared]);
+  const unread = shared?.chat ?? count;
+  return unread > 0 ? <span aria-label={`${unread} pesan belum dibaca`} className="rounded-full bg-orange-500 px-1.5 text-[10px] font-bold text-white">{unread > 99 ? '99+' : unread}</span> : null;
 }

@@ -1,3 +1,4 @@
+import {useListSearch} from '@/hooks/useListSearch';
 import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -15,7 +16,7 @@ export default function LaporanPetugas() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useListSearch();
   const [statusFilter, setStatusFilter] = useState("all");
   const [petugasFilter, setPetugasFilter] = useState("all");
   const [tanggal, setTanggal] = useState("");

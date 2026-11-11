@@ -1,3 +1,4 @@
+import {useListSearch, useCreateIntent} from '@/hooks/useListSearch';
 import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import api, { errMsg, fileUrl } from "@/lib/api";
@@ -27,7 +28,7 @@ const EMPTY_ACC = {
 export default function AkunUnit() {
   const [data, setData] = useState({ items: [], total: 0, page: 1, limit: 10 });
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useListSearch();
   const [clientFilter, setClientFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [provinsi, setProvinsi] = useState("");
@@ -46,6 +47,8 @@ export default function AkunUnit() {
   const [preview, setPreview] = useState(null); // { url, label }
   const [stampOpen, setStampOpen] = useState(false);
   const [stampBusy, setStampBusy] = useState(false);
+
+  useCreateIntent(() => {setEditing(null);setForm(EMPTY_ACC);setSkFile(null);setAddOpen(true);});
 
   const load = useCallback(() => {
     setLoading(true);

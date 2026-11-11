@@ -1,147 +1,362 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import {
-  LayoutDashboard, Building2, FileText, Car, ClipboardList,
-  FileCheck2, FileSearch, Users, Settings, LogOut, Menu, X, Layers, MessageCircle, Wallet, ChartNoAxesCombined, FileSignature, ScrollText,
+  AdminInboxContext,
+  AdminInboxProvider,
+} from "@/context/AdminInboxContext";
+import {
+  Layers,
+  LogOut,
+  Menu,
+  Search,
+  Bell,
+  Plus,
+  ChevronDown,
+  Settings,
+  MessageCircle,
+  ClipboardList,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { errMsg } from "@/lib/api";
 import ChatUnread from "@/components/ChatUnread";
 import ApprovalBadge from "@/components/ApprovalBadge";
+import { adminNavigation, CREATE_ACTIONS } from "@/lib/admin-navigation";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import "@/styles/admin-dashboard.css";
 
-// Sidebar dikelompokkan sesuai information architecture baru.
-// Catatan: route tetap sama (non-destruktif). Item yang akan dibuat pada Fase 2
-// (Nasabah/Debitur, BASTK, Arsip Dokumen) belum ditambahkan agar tidak ada link rusak.
-const NAV_GROUPS = [
-  {
-    section: null, // Dashboard tampil tanpa header section
-    items: [
-      { to: "/admin", end: true, label: "Dashboard", icon: LayoutDashboard, tid: "admin-sidebar-dashboard-link" },
-    ],
-  },
-  {
-    section: "Master Data",
-    items: [
-      { to: "/admin/klien", label: "Pemberi Kuasa / Leasing", icon: Building2, tid: "admin-sidebar-klien-link" },
-      { to: "/admin/akun", label: "Kontrak & Unit", icon: Car, tid: "admin-sidebar-akun-unit-link" },
-      { to: "/admin/petugas", label: "Petugas", icon: Users, tid: "admin-sidebar-petugas-link" },
-    ],
-  },
-  {
-    section: "Operasional",
-    items: [
-      { to: "/admin/surat-kuasa", label: "Surat Kuasa", icon: FileText, tid: "admin-sidebar-surat-kuasa-link" },
-      { to: "/admin/penugasan", label: "Penugasan", icon: ClipboardList, tid: "admin-sidebar-penugasan-link" },
-      { to: "/admin/surat-tugas", label: "Surat Tugas", icon: FileCheck2, tid: "admin-sidebar-surat-tugas-link" },
-      { to: "/admin/pks", label: "PKS", icon: FileSignature, tid: "admin-sidebar-pks-link" },
-      { to: "/admin/laporan", label: "Laporan Lapangan", icon: FileSearch, tid: "admin-sidebar-laporan-link" },
-      { to: "/admin/pembayaran-leasing", label: "Pembayaran Leasing", icon: Wallet, tid: "admin-sidebar-pembayaran-leasing-link" },
-      { to: "/admin/keuangan", label: "Laporan Keuangan", icon: ChartNoAxesCombined, tid: "admin-sidebar-keuangan-link" },
-      { to: "/admin/chat", label: "Chat", icon: MessageCircle, tid: "admin-sidebar-chat-link" },
-    ],
-  },
-  {
-    section: "Pengaturan",
-    items: [
-      { to: "/admin/pengaturan", label: "Pengaturan", icon: Settings, tid: "admin-sidebar-pengaturan-link" },
-      { to: "/admin/audit-log", label: "Audit Log", icon: ScrollText, tid: "admin-sidebar-audit-log-link" },
-    ],
-  },
-];
-
-export default function AdminLayout() {
-  const { user, logout } = useAuth();
-  const { appName, logo, companyName } = useBranding();
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-
-  const doLogout = async () => {try {await logout(); navigate("/login", {replace: true});} catch (e) {toast.error(errMsg(e));}};
-
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      <div className="px-5 py-5 flex items-center justify-center gap-3 border-b border-blue-100 min-h-[76px]">
+function Waves({ bottom = false }) {
+  return (
+    <svg
+      className={`admin-waves ${bottom ? "admin-waves-bottom" : ""}`}
+      viewBox="0 0 274 120"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path fill="#a9dbff" d="M0 0H274V25C180 120 75 6 0 54Z" />
+      <path
+        fill="#51b5ef"
+        opacity=".7"
+        d="M0 32C100 0 195 122 274 24V55C170 134 76 25 0 68Z"
+      />
+      <path
+        fill="#008bfb"
+        opacity=".7"
+        d="M0 60C110 18 193 131 274 51V77C172 148 67 61 0 82Z"
+      />
+    </svg>
+  );
+}
+function Sidebar({ onNavigate, onLogout }) {
+  const { user } = useAuth();
+  const { appName, logo } = useBranding();
+  return (
+    <div className="admin-sidebar-inner">
+      <div className="admin-brand">
         {logo ? (
-          <img src={logo} alt={appName} className="h-12 w-auto max-w-[200px] object-contain" data-testid="sidebar-logo" />
+          <img src={logo} alt="" data-testid="sidebar-logo" />
         ) : (
-          <><span className="brand-mark rounded-xl p-2 shrink-0"><Layers className="w-5 h-5" /></span><h1 className="font-heading font-semibold text-slate-900 text-xl tracking-tight break-words min-w-0">{appName}</h1></>
+          <Layers size={40} />
         )}
+        <div>
+          <strong>{appName}</strong>
+          <span>Administrative System</span>
+        </div>
       </div>
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
-        {NAV_GROUPS.map((group, gi) => (
-          <div key={gi} className="space-y-1">
-            {group.section && (
-              <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                {group.section}
-              </p>
-            )}
-            {[...group.items,...(group.section==='Pengaturan'&&user?.role==='owner'?[{to:'/admin/pengguna-admin',label:'Pengguna Admin',icon:Users,tid:'owner-admin-users-link'}]:[])].map((n) => (
-              <NavLink key={n.to} to={n.to} end={n.end} data-testid={n.tid} onClick={() => setOpen(false)}
+      <Waves />
+      <nav aria-label="Navigasi administrasi">
+        {adminNavigation(user?.role).map((group, i) => (
+          <div className="admin-nav-group" key={i}>
+            {group.section && <p>{group.section}</p>}
+            {group.items.map((n) => (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                end={n.end}
+                data-testid={n.tid}
+                onClick={onNavigate}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
-                  }`
-                }>
-                <n.icon className="w-[18px] h-[18px] shrink-0" />
-                {n.label}
-                {n.to === '/admin/chat' && <ChatUnread />}
-                {n.to === '/admin/penugasan' && user?.role==='owner' && <ApprovalBadge />}
+                  `admin-nav-link ${isActive ? "is-active" : ""}`
+                }
+              >
+                <n.icon size={19} />
+                <span>{n.label}</span>
+                {n.to === "/admin/chat" && <ChatUnread />}
+                {n.to === "/admin/penugasan" && user?.role === "owner" && (
+                  <ApprovalBadge />
+                )}
               </NavLink>
             ))}
           </div>
         ))}
       </nav>
-      <div className="p-3 border-t border-blue-100">
-        <button onClick={doLogout} data-testid="admin-logout-button"
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-rose-50 hover:text-rose-700 transition-all">
-          <LogOut className="w-[18px] h-[18px]" /> Keluar
-        </button>
-      </div>
+      <button
+        className="admin-sidebar-logout"
+        onClick={onLogout}
+        data-testid="admin-logout-button"
+      >
+        <LogOut size={18} />
+        Keluar
+      </button>
+      <Waves bottom />
     </div>
   );
-
+}
+const SEARCH_TARGETS = [
+  ["/admin/akun", "Kontrak & Unit"],
+  ["/admin/petugas", "Petugas"],
+  ["/admin/surat-tugas", "Surat Tugas"],
+  ["/admin/surat-kuasa", "Surat Kuasa"],
+  ["/admin/laporan", "Laporan Lapangan"],
+];
+function AdminShell() {
+  const { user, logout } = useAuth();
+  const { companyName, appName } = useBranding();
+  const inbox = useContext(AdminInboxContext);
+  const navigate = useNavigate();
+  const [drawer, setDrawer] = useState(false),
+    [searchOpen, setSearchOpen] = useState(false),
+    [query, setQuery] = useState(""),
+    [loggingOut, setLoggingOut] = useState(false);
+  useEffect(() => {
+    const key = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
+  const go = (path) => {
+    setDrawer(false);
+    setSearchOpen(false);
+    setQuery("");
+    navigate(path);
+  };
+  const doLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setLoggingOut(false);
+    }
+  };
   return (
-    <div className="brand-app min-h-screen flex font-sans">
-      {/* Desktop sidebar */}
-      <aside className="brand-sidebar w-64 flex-shrink-0 hidden md:flex flex-col fixed inset-y-0 left-0 z-30">
-        <SidebarContent />
+    <div className="admin-shell">
+      <aside className="admin-sidebar admin-sidebar-desktop">
+        <Sidebar onNavigate={() => setDrawer(false)} onLogout={doLogout} />
       </aside>
-
-      {/* Mobile drawer */}
-      {open && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <aside className="brand-sidebar absolute inset-y-0 left-0 w-64"><SidebarContent /></aside>
-        </div>
-      )}
-
-      <div className="flex-1 md:ml-64 flex flex-col min-w-0">
-        <header className="h-16 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setOpen(!open)} data-testid="admin-menu-toggle">
-              {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </Button>
-            <div>
-              <p className="text-xs text-slate-400 font-mono uppercase tracking-wider">{companyName || appName}</p>
-              <p className="text-sm font-semibold text-slate-700">Panel Administrasi</p>
-            </div>
+      <Sheet open={drawer} onOpenChange={setDrawer}>
+        <SheetContent
+          side="left"
+          className="admin-sidebar admin-mobile-sidebar"
+        >
+          <SheetTitle className="sr-only">Menu administrasi</SheetTitle>
+          <SheetDescription className="sr-only">
+            Navigasi aplikasi dan pengaturan akun.
+          </SheetDescription>
+          <Sidebar onNavigate={() => setDrawer(false)} onLogout={doLogout} />
+        </SheetContent>
+      </Sheet>
+      <div className="admin-workspace">
+        <header className="admin-header">
+          <button
+            className="admin-icon-button admin-mobile-menu"
+            aria-label="Buka menu"
+            aria-expanded={drawer}
+            onClick={() => setDrawer(true)}
+            data-testid="admin-menu-toggle"
+          >
+            <Menu />
+          </button>
+          <div className="admin-company">
+            <strong>{companyName || appName}</strong>
+            <span>Panel Administrasi</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-slate-800">{user?.name}</p>
-              <p className="text-xs text-slate-400">{user?.email}</p>
-            </div>
-            <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold text-sm">
-              {user?.name?.[0]?.toUpperCase()}
-            </div>
+          <button
+            className="admin-global-search"
+            onClick={() => setSearchOpen(true)}
+            aria-label="Cari data aplikasi"
+          >
+            <Search size={19} />
+            <span>Cari data, kontrak, unit, petugas, atau laporan...</span>
+            <kbd>Ctrl K</kbd>
+          </button>
+          <div className="admin-header-actions">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="admin-icon-button admin-notification"
+                  aria-label="Notifikasi"
+                >
+                  <Bell size={23} />
+                  {inbox.chat + inbox.approvals > 0 && <i />}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel>Notifikasi</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => go("/admin/chat")}>
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  {inbox.loading
+                    ? "Memuat pesan…"
+                    : `${inbox.chat} pesan belum dibaca`}
+                </DropdownMenuItem>
+                {user?.role === "owner" && (
+                  <DropdownMenuItem onSelect={() => go("/admin/penugasan")}>
+                    <ClipboardList className="mr-2 h-4 w-4" />
+                    {inbox.loading
+                      ? "Memuat penugasan…"
+                      : `${inbox.approvals} menunggu persetujuan`}
+                  </DropdownMenuItem>
+                )}
+                {inbox.error && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={inbox.refresh}>
+                      Gagal memuat notifikasi. Coba lagi
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="admin-create-button" aria-label="Buat Baru">
+                  <Plus size={20} />
+                  <span>Buat Baru</span>
+                  <ChevronDown size={15} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {CREATE_ACTIONS.map((a) => (
+                  <DropdownMenuItem key={a.to} onSelect={() => go(a.to)}>
+                    <a.icon className="mr-2 h-4 w-4" />
+                    {a.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="admin-profile" aria-label="Menu akun">
+                  <span className="admin-avatar">
+                    {user?.name?.[0]?.toUpperCase() || "A"}
+                  </span>
+                  <span className="admin-profile-copy">
+                    <strong>{user?.name}</strong>
+                    <small>{user?.email}</small>
+                  </span>
+                  <ChevronDown size={15} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>{user?.name}</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => go("/admin/pengaturan")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Pengaturan
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={loggingOut} onSelect={doLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Keluar
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <main className="admin-main">
           <Outlet />
         </main>
       </div>
+      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <DialogContent className="p-0 overflow-hidden">
+          <DialogTitle className="sr-only">Cari data aplikasi</DialogTitle>
+          <DialogDescription className="sr-only">
+            Masukkan kata kunci dan pilih jenis data.
+          </DialogDescription>
+          <Command shouldFilter={false}>
+            <CommandInput
+              value={query}
+              onValueChange={setQuery}
+              placeholder="Cari kontrak, unit, petugas, atau laporan…"
+            />
+            <CommandList>
+              <CommandGroup
+                heading={
+                  query.trim()
+                    ? "Pilih jenis data yang ingin dicari"
+                    : "Buka menu"
+                }
+              >
+                {query.trim()
+                  ? SEARCH_TARGETS.map(([path, label]) => (
+                      <CommandItem
+                        key={path}
+                        onSelect={() =>
+                          go(
+                            `${path}?search=${encodeURIComponent(query.trim())}`,
+                          )
+                        }
+                      >
+                        <Search className="mr-2 h-4 w-4" />
+                        Cari “{query.trim()}” di {label}
+                      </CommandItem>
+                    ))
+                  : adminNavigation(user?.role)
+                      .flatMap((g) => g.items)
+                      .map((n) => (
+                        <CommandItem key={n.to} onSelect={() => go(n.to)}>
+                          <n.icon className="mr-2 h-4 w-4" />
+                          {n.label}
+                        </CommandItem>
+                      ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+          <p className="px-4 pb-3 text-xs text-slate-500">
+            Masukkan kata kunci dan pilih jenis data.
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+export default function AdminLayout() {
+  return (
+    <AdminInboxProvider>
+      <AdminShell />
+    </AdminInboxProvider>
   );
 }

@@ -1,3 +1,4 @@
+import {useListSearch} from '@/hooks/useListSearch';
 import DeleteDataButton from "@/components/DeleteDataButton";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -18,7 +19,7 @@ export default function SuratTugas() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useListSearch();
   const [statusFilter, setStatusFilter] = useState("all");
 
   const load = useCallback(() => {

@@ -1,100 +1,278 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "@/lib/api";
 import LoadError from "@/components/LoadError";
-import { formatDateTime } from "@/lib/constants";
+import { formatDateTime, REPORT_STATUS } from "@/lib/constants";
 import { StatusBadge } from "@/components/StatusBadge";
-import { REPORT_STATUS } from "@/lib/constants";
 import EmptyState from "@/components/EmptyState";
-import {rupiah} from '@/components/ReportPayment';
 import {
-  FileText, Car, ClipboardCheck, CheckCircle2, XCircle, Clock, CalendarDays, Activity, Eye,
+  FileText,
+  Car,
+  ClipboardList,
+  SearchX,
+  Clock,
+  CalendarDays,
+  Zap,
+  Eye,
+  Layers,
+  Coins,
+  Wallet,
+  ChartNoAxesCombined,
+  MessageCircle,
+  ArrowRight,
+  ChevronDown,
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-
-const STAT_CONF = [
-  { key: "surat_kuasa_aktif", tone: "blue", label: "Surat Kuasa Aktif", icon: FileText },
-  { key: "total_akun", tone: "cyan", label: "Total Kontrak & Unit", icon: Car },
-  { key: "tugas_aktif", tone: "purple", label: "Tugas Aktif", icon: ClipboardCheck },
-  { key: "unit_ditemukan", tone: "green", label: "Unit Ditemukan", icon: CheckCircle2 },
-  { key: "unit_tidak_ditemukan", tone: "rose", label: "Tidak Ditemukan", icon: XCircle },
-  { key: "belum_dikerjakan", tone: "amber", label: "Belum Dikerjakan", icon: Clock },
-  { key: "laporan_hari_ini", tone: "orange", label: "Laporan Hari Ini", icon: CalendarDays },
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
+const STATS = [
+  ["surat_kuasa_aktif", "blue", "Surat Kuasa Aktif", FileText],
+  ["total_akun", "cyan", "Total Kontrak & Unit", Layers],
+  ["tugas_aktif", "purple", "Tugas Aktif", ClipboardList],
+  ["unit_ditemukan", "green", "Unit Ditemukan", Car],
+  ["unit_tidak_ditemukan", "rose", "Tidak Ditemukan", SearchX],
+  ["belum_dikerjakan", "amber", "Belum Dikerjakan", Clock],
+  ["laporan_hari_ini", "orange", "Laporan Hari Ini", CalendarDays],
 ];
-
+const FINANCE = [
+  ["income", "green", "Pemasukan Leasing Bulan Ini", Coins],
+  ["expense", "orange", "Pembayaran Petugas Bulan Ini", Wallet],
+  ["profit", "blue", "Profit Bulan Ini", ChartNoAxesCombined],
+];
+const money = new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+function BusinessClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div className="dashboard-clock">
+      <div>
+        <CalendarDays />
+        <p>
+          <small>Hari Ini</small>
+          <strong>
+            {new Intl.DateTimeFormat("id-ID", {
+              timeZone: "Asia/Jakarta",
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            }).format(now)}
+          </strong>
+        </p>
+      </div>
+      <div>
+        <Clock />
+        <p>
+          <small>Pukul</small>
+          <strong>
+            {new Intl.DateTimeFormat("id-ID", {
+              timeZone: "Asia/Jakarta",
+              hour: "2-digit",
+              minute: "2-digit",
+              hourCycle: "h23",
+            }).format(now)}{" "}
+            WIB
+          </strong>
+        </p>
+      </div>
+    </div>
+  );
+}
+function Ornament() {
+  return (
+    <svg className="finance-ornament" viewBox="0 0 120 60" aria-hidden="true">
+      <path
+        d="M0 57C10 42 12 57 22 45S36 50 44 35S61 43 70 24S86 39 98 18L119 0V60H0Z"
+        fill="currentColor"
+        opacity=".08"
+      />
+      <path
+        d="M0 57C10 42 12 57 22 45S36 50 44 35S61 43 70 24S86 39 98 18L119 0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [stats, setStats] = useState({});
-  const [finance,setFinance]=useState({});
-  const [activity, setActivity] = useState([]);
-  const [chart, setChart] = useState([]);
-
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const load = useCallback(() => {
-    setLoading(true); setError("");
-    Promise.all([api.get("/dashboard/stats"),api.get("/dashboard/recent-activity"),api.get("/dashboard/reports-7days"),api.get('/dashboard/finance')])
-      .then(([counts,recent,days,money]) => {setStats(counts.data);setActivity(recent.data);setChart(days.data);setFinance(money.data);})
-      .catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
+  const [data, setData] = useState({
+      stats: {},
+      finance: {},
+      activity: [],
+      chart: [],
+    }),
+    [error, setError] = useState(""),
+    [loading, setLoading] = useState(true);
+  const request = useRef(null);
+  const load = useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true);
+    setError("");
+    try {
+      const responses = await Promise.all(
+        [
+          "/dashboard/stats",
+          "/dashboard/recent-activity",
+          "/dashboard/reports-7days",
+          "/dashboard/finance",
+        ].map((path) => api.get(path, { signal: controller.signal })),
+      );
+      if (!controller.signal.aborted)
+        setData({
+          stats: responses[0].data,
+          activity: responses[1].data,
+          chart: responses[2].data,
+          finance: responses[3].data,
+        });
+    } catch (e) {
+      if (!controller.signal.aborted) setError(errMsg(e));
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
   }, []);
-  useEffect(() => {load();}, [load]);
-  if (error) return <div className="space-y-5"><h1 className="text-2xl font-semibold">Dashboard</h1><LoadError message={error} onRetry={load} /></div>;
-
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="brand-hero rounded-2xl p-5 sm:p-7">
-        <h1 className="font-heading text-2xl sm:text-3xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-white/90 mt-1">Ringkasan operasional lapangan hari ini.</p>
-        <button onClick={() => navigate('/admin/chat')} className="mt-3 rounded-xl bg-white/20 px-3 py-2 text-sm font-semibold">Buka kotak masuk chat</button>
+  useEffect(() => {
+    load();
+    return () => request.current?.abort();
+  }, [load]);
+  if (error)
+    return (
+      <div className="space-y-5">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <LoadError message={error} onRetry={load} />
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">{[['income','Pemasukan Leasing Bulan Ini','bg-emerald-50 border-emerald-200 text-emerald-800'],['expense','Pembayaran Petugas Bulan Ini','bg-orange-50 border-orange-200 text-orange-800'],['profit','Profit Bulan Ini','bg-blue-50 border-blue-200 text-blue-800']].map(([key,label,color])=><div key={key} className={`rounded-2xl border p-5 ${color}`}><p className="text-sm font-semibold">{label}</p><p className="text-2xl font-bold mt-2 break-words" data-testid={`dashboard-finance-${key}`}>{loading?'—':rupiah(finance[key]??'0')}</p><p className="text-xs mt-2">Periode {finance.month||'bulan berjalan'} · WIB</p></div>)}</div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" data-testid="dashboard-stats">
-        {STAT_CONF.map((s) => (
-          <div key={s.key} className={`brand-panel p-4 sm:p-5 flex items-center justify-between gap-3 hover:shadow-md transition-all dashboard-stat dashboard-stat-${s.tone}`}>
-            <div>
-              <p className="text-xs stat-label font-medium">{s.label}</p>
-              <p className={`text-2xl sm:text-3xl font-semibold font-heading mt-1 stat-value`} data-testid={`stat-${s.key}`}>{loading ? "—" : stats[s.key] ?? 0}</p>
+    );
+  const { stats, finance, activity, chart } = data;
+  return (
+    <div className="admin-dashboard" aria-busy={loading}>
+      <section className="dashboard-hero">
+        <div className="dashboard-hero-copy">
+          <h1>Dashboard</h1>
+          <p>Ringkasan operasional dan laporan hari ini.</p>
+          <button onClick={() => navigate("/admin/chat")}>
+            <MessageCircle size={20} />
+            Buka Kotak Masuk Chat
+            <ArrowRight size={17} />
+          </button>
+        </div>
+        <BusinessClock />
+        <img
+          className="dashboard-hero-art"
+          src="/images/dashboard-operations.png"
+          alt=""
+        />
+      </section>
+      <div className="dashboard-finance-grid">
+        {FINANCE.map(([key, tone, label, Icon]) => (
+          <section key={key} className={`dashboard-finance metric-${tone}`}>
+            <span className="metric-icon">
+              <Icon />
+            </span>
+            <div className="metric-copy">
+              <h2>{label}</h2>
+              <p data-testid={`dashboard-finance-${key}`}>
+                {loading ? "—" : money.format(Number(finance[key] ?? 0))}
+              </p>
+              <small>Periode {finance.month || "bulan berjalan"} · WIB</small>
             </div>
-            <div className={`w-10 h-10 shrink-0 rounded-xl stat-icon flex items-center justify-center`}>
-              <s.icon className="w-5 h-5" />
-            </div>
-          </div>
+            <Ornament />
+          </section>
         ))}
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="brand-panel lg:col-span-2 min-w-0 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5 text-blue-600" />
-            <h2 className="font-heading font-semibold text-slate-800">Aktivitas Terbaru</h2>
+      <div className="dashboard-metrics" data-testid="dashboard-stats">
+        {STATS.map(([key, tone, label, Icon]) => (
+          <section key={key} className={`dashboard-metric metric-${tone}`}>
+            <span className="metric-icon">
+              <Icon />
+            </span>
+            <div>
+              <h2>{label}</h2>
+              <p data-testid={`stat-${key}`}>
+                {loading ? "—" : (stats[key] ?? 0)}
+              </p>
+            </div>
+          </section>
+        ))}
+      </div>
+      <div className="dashboard-bottom">
+        <section className="dashboard-panel dashboard-activity">
+          <div className="dashboard-panel-heading">
+            <h2>
+              <Zap />
+              Aktivitas Terbaru
+            </h2>
+            <button onClick={() => navigate("/admin/laporan")}>
+              Lihat Semua
+              <ArrowRight size={14} />
+            </button>
           </div>
-          {activity.length === 0 ? (
-            <EmptyState icon={Activity} title="Belum ada aktivitas" desc="Laporan petugas akan muncul di sini." />
+          {loading ? (
+            <p className="dashboard-loading" role="status">
+              Memuat aktivitas…
+            </p>
+          ) : activity.length === 0 ? (
+            <EmptyState
+              icon={Zap}
+              title="Belum ada aktivitas"
+              desc="Laporan petugas akan muncul di sini."
+            />
           ) : (
-            <div className="overflow-x-auto -mx-5">
-              <table className="w-full text-sm">
+            <div className="dashboard-table-scroll">
+              <table>
                 <thead>
-                  <tr className="text-left text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                    <th className="px-5 py-2 font-medium">Waktu</th>
-                    <th className="px-3 py-2 font-medium">Petugas</th>
-                    <th className="px-3 py-2 font-medium">No. Surat Tugas</th>
-                    <th className="px-3 py-2 font-medium">Debitur</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-5 py-2 font-medium text-right">Aksi</th>
+                  <tr>
+                    {[
+                      "Waktu",
+                      "Petugas",
+                      "No. Surat Tugas",
+                      "Debitur",
+                      "Status",
+                      "Aksi",
+                    ].map((h) => (
+                      <th key={h}>{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {activity.map((a) => (
-                    <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                      <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{formatDateTime(a.waktu)}</td>
-                      <td className="px-3 py-3 font-medium text-slate-700">{a.petugas}</td>
-                      <td className="px-3 py-3 font-mono text-xs text-slate-600">{a.nomor_surat_tugas}</td>
-                      <td className="px-3 py-3 text-slate-700">{a.nama_debitur}</td>
-                      <td className="px-3 py-3"><StatusBadge map={REPORT_STATUS} value={a.status} /></td>
-                      <td className="px-5 py-3 text-right">
-                        <button onClick={() => navigate(`/admin/laporan/${a.id}`)} className="text-blue-600 hover:text-blue-800" data-testid={`activity-view-${a.id}`}>
-                          <Eye className="w-4 h-4 inline" />
+                    <tr key={a.id}>
+                      <td>{formatDateTime(a.waktu)}</td>
+                      <td>{a.petugas}</td>
+                      <td>{a.nomor_surat_tugas}</td>
+                      <td>{a.nama_debitur}</td>
+                      <td>
+                        <StatusBadge map={REPORT_STATUS} value={a.status} />
+                      </td>
+                      <td>
+                        <button
+                          aria-label={`Lihat laporan ${a.nomor_surat_tugas}`}
+                          onClick={() => navigate(`/admin/laporan/${a.id}`)}
+                          data-testid={`activity-view-${a.id}`}
+                        >
+                          <Eye size={17} />
                         </button>
                       </td>
                     </tr>
@@ -103,21 +281,104 @@ export default function Dashboard() {
               </table>
             </div>
           )}
-        </div>
-
-        <div className="brand-panel min-w-0 p-5">
-          <h2 className="font-heading font-semibold text-slate-800 mb-1">Laporan 7 Hari Terakhir</h2>
-          <p className="text-xs text-slate-400 mb-4">Jumlah laporan masuk per hari</p>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chart} margin={{ left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <Tooltip cursor={{ fill: "#f8fafc" }} contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 }} />
-              <Bar dataKey="count" fill="#0066ff" radius={[6, 6, 0, 0]} name="Laporan" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        </section>
+        <section className="dashboard-panel dashboard-chart">
+          <div className="dashboard-panel-heading">
+            <div>
+              <h2>
+                <ChartNoAxesCombined />
+                Laporan 7 Hari Terakhir
+              </h2>
+              <p>Jumlah laporan masuk per hari</p>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button>
+                  <CalendarDays size={14} />7 Hari Terakhir
+                  <ChevronDown size={13} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={load}>
+                  Perbarui data
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate("/admin/laporan")}>
+                  Lihat semua laporan
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          {loading ? (
+            <p className="dashboard-loading" role="status">
+              Memuat grafik…
+            </p>
+          ) : (
+            <>
+              <div
+                className="dashboard-chart-canvas"
+                role="img"
+                aria-label={`Jumlah laporan per hari: ${chart.map((d) => `${d.label}: ${d.count}`).join(", ")}`}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chart}
+                    margin={{ left: -20, right: 8, top: 10, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient
+                        id="dashboard-bar"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop offset="0" stopColor="#006cff" />
+                        <stop offset="1" stopColor="#20c5ff" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      strokeDasharray="4 4"
+                      stroke="#e7eefb"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 11, fill: "#45618c" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: "#45618c" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "#f0f7ff" }}
+                      contentStyle={{
+                        borderRadius: 12,
+                        border: "1px solid #dce8ff",
+                        fontSize: 12,
+                      }}
+                    />
+                    <Bar
+                      dataKey="count"
+                      fill="url(#dashboard-bar)"
+                      radius={[7, 7, 0, 0]}
+                      name="Laporan"
+                      maxBarSize={54}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              {chart.every((d) => !d.count) && (
+                <p className="text-center text-xs text-slate-500">
+                  Belum ada laporan dalam 7 hari terakhir.
+                </p>
+              )}
+            </>
+          )}
+        </section>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import {useListSearch} from '@/hooks/useListSearch';
 import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useState } from "react";
 import api, { errMsg } from "@/lib/api";
@@ -14,6 +15,8 @@ const EMPTY = { name: "", email: "", password: "", telepon: "", tim: "", status:
 
 export default function Petugas() {
   const [items, setItems] = useState([]);
+  const [search,setSearch] = useListSearch();
+  const filtered = items.filter(p => [p.name,p.email,p.telepon,p.petugas_code,p.tim].some(value => String(value || "").toLocaleLowerCase("id").includes(search.trim().toLocaleLowerCase("id"))));
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -55,13 +58,14 @@ export default function Petugas() {
         </Button>
       </div>
 
+      <Input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nama, kode, email, atau tim petugas..." aria-label="Cari petugas" data-testid="petugas-search-input" />
       {loading ? (
         <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
-      ) : items.length === 0 ? (
-        <div className="brand-panel rounded-2xl border border-slate-200"><EmptyState icon={Users} title="Belum ada petugas" desc="Tambahkan petugas lapangan." /></div>
+      ) : filtered.length === 0 ? (
+        <div className="brand-panel rounded-2xl border border-slate-200"><EmptyState icon={Users} title={search ? "Petugas tidak ditemukan" : "Belum ada petugas"} desc={search ? "Coba kata kunci lain." : "Tambahkan petugas lapangan."} /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {items.map((p) => (
+          {filtered.map((p) => (
             <div key={p.id} className="brand-panel rounded-2xl border border-slate-200 p-5" data-testid={`petugas-card-${p.id}`}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">

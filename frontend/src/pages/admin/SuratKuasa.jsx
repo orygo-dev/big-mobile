@@ -1,3 +1,4 @@
+import {useListSearch, useCreateIntent} from '@/hooks/useListSearch';
 import DeleteDataButton from "@/components/DeleteDataButton";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -21,10 +22,12 @@ export default function SuratKuasa() {
   const [items, setItems] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useListSearch();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+
+  useCreateIntent(() => {setForm(EMPTY);setOpen(true);});
 
   const load = useCallback(() => {
     setLoading(true);
