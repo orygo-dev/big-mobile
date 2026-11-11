@@ -284,6 +284,18 @@ try {
 
         await page.goto(origin + "/admin");
         await page.getByTestId("dashboard-finance-profit").waitFor();
+        for (const width of [768, 820, 1024, 1280]) {
+          await page.setViewportSize({ width, height: 900 });
+          assert.equal(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth > innerWidth,
+            ),
+            false,
+          );
+          assert(
+            await page.getByRole("button", { name: "Buat Baru" }).isVisible(),
+          );
+        }
         await page.setViewportSize({ width: 390, height: 844 });
         await page.screenshot({
           path: `.local/dashboard-${engine}-${role}-mobile.png`,

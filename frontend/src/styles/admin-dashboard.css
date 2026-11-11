@@ -767,6 +767,17 @@
     height: 240px;
   }
 }
+@media (max-width: 1023px) {
+  .admin-sidebar-desktop {
+    display: none;
+  }
+  .admin-workspace {
+    margin-left: 0;
+  }
+  .admin-mobile-menu {
+    display: inline-flex;
+  }
+}
 @media (max-width: 767px) {
   .admin-sidebar-desktop {
     display: none;
