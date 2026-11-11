@@ -286,6 +286,7 @@ try {
         await page.getByTestId("dashboard-finance-profit").waitFor();
         for (const width of [768, 820, 1024, 1280]) {
           await page.setViewportSize({ width, height: 900 });
+          await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
           assert.equal(
             await page.evaluate(
               () => document.documentElement.scrollWidth > innerWidth,

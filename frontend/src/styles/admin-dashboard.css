@@ -632,6 +632,7 @@
 .dashboard-chart-canvas {
   height: 206px;
   min-width: 0;
+  overflow: hidden;
 }
 .dashboard-loading {
   text-align: center;
