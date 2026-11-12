@@ -56,7 +56,7 @@ def register(router,runtime,agreements):
             frozen=await source(data,user)
             year=int(frozen['start_date'][:4]);month=int(frozen['start_date'][5:7])
             sequence=await runtime.next_sequence(f"pks_{user['company_id']}_{year}")
-            number=f'{sequence:03d}/PKSM/{pks_document.ROMAN[month-1]}/{year}'
+            number=f'{sequence:03d}/BIG-PKSM/{pks_document.ROMAN[month-1]}/{year}'
             # The saved numbered PDF is ready to print/sign; draft status stays in the UI.
             content=await run_in_threadpool(pks_document.render,frozen,number,False)
             await run_in_threadpool(runtime.validate_pdf,content)

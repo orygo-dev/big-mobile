@@ -182,7 +182,7 @@ try {
               end_date: "2029-11-11",
               duration: 3,
               duration_unit: "TAHUN",
-              document_number: "007/PKSM/XI/2026",
+              document_number: "007/BIG-PKSM/XI/2026",
               document_status: "DRAFT",
               status: "DRAFT",
               url: "/api/files/generated.pdf",

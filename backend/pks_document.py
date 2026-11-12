@@ -75,7 +75,7 @@ class NumberedCanvas:
                 super().save()
         return Counted(*args,**kwargs)
 
-def render(data, number='DRAFT/PKSM', draft=True):
+def render(data, number='DRAFT/BIG-PKSM', draft=True):
     company=data['company'];officer=data['officer'];start=date.fromisoformat(data['start_date'])
     out=io.BytesIO();doc=SimpleDocTemplate(out,pagesize=A4,leftMargin=28,rightMargin=28,topMargin=27,bottomMargin=33,title='Perjanjian Kerjasama Mitra Penagihan '+number,author=company['nama'])
     body=ParagraphStyle('PKSBody',fontName='Times-Roman',fontSize=7.4,leading=8.5,alignment=TA_JUSTIFY,spaceAfter=1.2,splitLongWords=True)

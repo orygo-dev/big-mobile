@@ -24,10 +24,10 @@ def pdf():
 def frozen():return pks_document.snapshot(COMPANY,PERSON,pks.period(3,'TAHUN',date(2026,11,12)),3,'TAHUN')
 
 def test_template_contains_all_clauses_dynamic_parties_bank_and_period():
-    content=pks_document.render(frozen(),'007/PKSM/XI/2026',False)
+    content=pks_document.render(frozen(),'007/BIG-PKSM/XI/2026',False)
     pages=PdfReader(io.BytesIO(content)).pages;text='\n'.join(p.extract_text() for p in pages)
     assert len(pages)==2
-    for word in ('Mitra Contoh','Direktur Contoh','00123456789','3 (tiga) tahun','12 November 2026','11 November 2029','007/PKSM/XI/2026','Halaman 1/2','Halaman 2/2'):
+    for word in ('Mitra Contoh','Direktur Contoh','00123456789','3 (tiga) tahun','12 November 2026','11 November 2029','007/BIG-PKSM/XI/2026','Halaman 1/2','Halaman 2/2'):
         assert word in text
     for n in range(1,13):assert f'PASAL {n}\n' in text
     for unwanted in ('PT SMS','PT Sejahtera','NURJANENA','PRIVATE-','DRAFT - BELUM'):assert unwanted not in text
@@ -43,7 +43,7 @@ def test_long_identities_wrap_and_xml_is_literal():
 def test_generate_snapshots_profile_and_retry_returns_original(local_api,monkeypatch,role):
     api,db=local_api;setup(db,monkeypatch);server.app.dependency_overrides[server.admin_required]=lambda:{**ADMIN,'role':role}
     body=payload();response=api.post('/api/pks/generate',json=body);assert response.status_code==200,response.text
-    out=response.json();assert out['status']=='DRAFT' and out['document_number']=='007/PKSM/XI/2026'
+    out=response.json();assert out['status']=='DRAFT' and out['document_number']=='007/BIG-PKSM/XI/2026'
     assert 'document_snapshot' not in out
     record=db.documents.insert_one.call_args.args[0]
     assert record['document_snapshot']['officer']['bank_account_number']=='00123456789'
@@ -61,7 +61,7 @@ def test_preview_does_not_save_file_or_allocate_number(local_api,monkeypatch):
     api,db=local_api;setup(db,monkeypatch);body=payload();body.pop('submission_id')
     result=api.post('/api/pks/preview',json=body);assert result.status_code==200,result.text
     assert result.headers['content-type']=='application/pdf' and result.headers['cache-control']=='private, no-store'
-    assert 'DRAFT' in PdfReader(io.BytesIO(result.content)).pages[0].extract_text()
+    assert 'DRAFT/BIG-PKSM' in PdfReader(io.BytesIO(result.content)).pages[0].extract_text()
     db.documents.insert_one.assert_not_called();db.counters.find_one_and_update.assert_not_called();server.put_object.assert_not_called()
 
 @pytest.mark.parametrize('changes',[{'duration':0},{'duration':1.5},{'duration':51},{'unit':'HARI'},{'start_date':'2000-01-01'},{'officer_id':''}])
