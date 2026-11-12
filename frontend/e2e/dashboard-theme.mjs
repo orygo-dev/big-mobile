@@ -158,7 +158,7 @@ try {
               },
             ];
           else if (
-            ["/api/surat-kuasa", "/api/surat-tugas", "/api/clients"].includes(p)
+            ["/api/surat-kuasa", "/api/surat-tugas", "/api/clients", "/api/laporan"].includes(p)
           )
             body = [];
           else if (p === "/api/auth/logout")
