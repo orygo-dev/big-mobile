@@ -1068,3 +1068,61 @@
   .dashboard-metric { min-height: 68px; padding-block: 9px; }
   .dashboard-activity td { padding-block: 5px; }
 }
+
+.reports-chart {
+  position: relative;
+  height: calc(100% - 55px);
+  margin: 30px 8px 25px 34px;
+}
+.reports-chart-grid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.reports-chart-grid > div {
+  position: relative;
+  border-top: 1px dashed #e0eafb;
+}
+.reports-chart-grid span {
+  position: absolute;
+  right: calc(100% + 6px);
+  transform: translateY(-50%);
+  color: #45618c;
+  font-size: 10px;
+}
+.reports-chart-days {
+  position: absolute;
+  inset: 0;
+  display: grid;
+}
+.reports-chart-day {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+}
+.reports-chart-bar {
+  position: relative;
+  width: min(80%, 54px);
+  border-radius: 7px 7px 0 0;
+  background: linear-gradient(#006cff, #20c5ff);
+}
+.reports-chart-bar > span, .reports-chart-date {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  color: #18386d;
+}
+.reports-chart-bar > span {
+  bottom: calc(100% + 3px);
+  background: #edf3ff;
+  padding: 2px 6px;
+  border-radius: 7px;
+  font-weight: 600;
+}
+.reports-chart-date { top: calc(100% + 5px); }

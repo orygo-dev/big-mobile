@@ -25,6 +25,7 @@ const server = http.createServer((req, res) => {
       ".css": "text/css",
       ".html": "text/html",
       ".png": "image/png",
+      ".webp": "image/webp",
     }[path.extname(file)] || "application/octet-stream",
   );
   fs.createReadStream(file).pipe(res);
@@ -200,6 +201,11 @@ try {
         if (role === "owner")
           await page.getByTestId("approval-pending-count").waitFor();
 
+        await page.waitForFunction(() => document.querySelector(".dashboard-hero-art")?.naturalWidth > 0);
+        assert.deepEqual(
+          await page.getByTestId(/^report-bar-label-/).allTextContents(),
+          ["3", "0", "0", "2", "1", "0", "0"],
+        );
         await page.screenshot({
           path: `.local/dashboard-${engine}-${role}-desktop.png`,
           fullPage: true,

@@ -29,16 +29,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  LabelList,
-} from "recharts";
+import heroArtwork from "./dashboard-operations.webp";
 const STATS = [
   ["surat_kuasa_aktif", "blue", "Surat Kuasa Aktif", FileText],
   ["total_akun", "cyan", "Total Kontrak & Unit", Layers],
@@ -105,10 +96,28 @@ function TrendLine({series,metric,label}) {
   if(!points)return null;
   return <svg className="finance-ornament" viewBox="0 0 120 52" role="img" aria-label={`Grafik kumulatif ${label.toLowerCase()} dalam bulan berjalan`}><polygon points={`2,52 ${points} 118,52`} fill="currentColor" opacity=".1"/><polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round"/></svg>;
 }
-function BarValue({x,y,width,value,index}) {
-  const left=Number(x)+Number(width)/2,top=Math.max(10,Number(y)-19);
-  if(!Number.isFinite(left)||!Number.isFinite(top))return null;
-  return <g data-testid={`report-bar-label-${index}`}><rect x={left-15} y={top-10} width={30} height={20} rx={7} fill="#edf3ff"/><text x={left} y={top+4} textAnchor="middle" fill="#18386d" fontSize={11} fontWeight={600}>{value}</text></g>;
+function ReportsChart({days}) {
+  const maximum = Math.max(4, ...days.map(day => day.count));
+  const step = Math.ceil(maximum / 4);
+  const ticks = [4, 3, 2, 1, 0].map(value => value * step);
+
+  return (
+    <div className="reports-chart" aria-hidden="true">
+      <div className="reports-chart-grid">
+        {ticks.map(tick => <div key={tick}><span>{tick}</span></div>)}
+      </div>
+      <div className="reports-chart-days" style={{gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`}}>
+        {days.map(({label, count}, index) => (
+          <div className="reports-chart-day" key={label} title={`${label}: ${count} laporan`}>
+            <div className="reports-chart-bar" style={{height: `${count / ticks[0] * 100}%`}}>
+              <span data-testid={`report-bar-label-${index}`}>{count}</span>
+            </div>
+            <span className="reports-chart-date">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -181,7 +190,7 @@ export default function Dashboard() {
         <BusinessClock />
         <img
           className="dashboard-hero-art"
-          src="/images/dashboard-operations-light.png"
+          src={heroArtwork}
           alt=""
         />
       </section>
@@ -320,59 +329,7 @@ export default function Dashboard() {
                 role="img"
                 aria-label={`Jumlah laporan per hari: ${chart.map((d) => `${d.label}: ${d.count}`).join(", ")}`}
               >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={chart}
-                    margin={{ left: -20, right: 8, top: 28, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient
-                        id="dashboard-bar"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0" stopColor="#006cff" />
-                        <stop offset="1" stopColor="#20c5ff" />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      strokeDasharray="4 4"
-                      stroke="#e7eefb"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fontSize: 11, fill: "#45618c" }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      domain={[0,maximum=>Math.max(4,Math.ceil(maximum))]}
-                      allowDecimals={false}
-                      tick={{ fontSize: 11, fill: "#45618c" }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      cursor={{ fill: "#f0f7ff" }}
-                      contentStyle={{
-                        borderRadius: 12,
-                        border: "1px solid #dce8ff",
-                        fontSize: 12,
-                      }}
-                    />
-                    <Bar
-                      dataKey="count"
-                      fill="url(#dashboard-bar)"
-                      radius={[7, 7, 0, 0]}
-                      name="Laporan"
-                      maxBarSize={54}
-                      isAnimationActive={false}
-                    ><LabelList dataKey="count" content={<BarValue/>}/></Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <ReportsChart days={chart} />
               </div>
               {chart.every((d) => !d.count) && (
                 <p className="text-center text-xs text-slate-500">
