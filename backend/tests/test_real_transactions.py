@@ -858,3 +858,60 @@ def test_deleting_assignment_and_creating_report_concurrently_cannot_orphan_repo
     assignment=db.assignments.find_one({'id':letter['assignment_id']})
     assert not report or assignment
     if deleted.status_code==200:assert not report and not assignment
+
+
+def test_generated_pks_snapshot_concurrent_retry_signed_archive_and_delete(live):
+    from pypdf import PdfReader,PdfWriter
+    call,db=live['call'],live['db'];company=live['users']['admin']['company_id']
+    db.companies.update_one({'id':company},{'$set':{'alamat':'Jalan QA Banjarbaru','telepon':'081234567890','city':'Banjarbaru','director_position':'Direktur'}})
+    officer=call('admin','POST','/petugas',json={'name':'Generated PKS QA','email':uuid.uuid4().hex+'@example.com','password':'Synthetic-password-123','nik':'6372041804860004','alamat':'Jalan Petugas QA','telepon':'081987654321','bank_name':'Bank QA','bank_branch':'Banjarbaru','bank_account_number':'00123456789','bank_account_name':'Generated PKS QA'}).json()
+    body={'officer_id':officer['id'],'duration':3,'unit':'TAHUN','submission_id':str(uuid.uuid4())}
+    preview=call('owner','POST','/pks/preview',json={k:v for k,v in body.items() if k!='submission_id'})
+    assert preview.headers['content-type']=='application/pdf'
+    assert 'DRAFT' in PdfReader(io.BytesIO(preview.content)).pages[0].extract_text()
+    assert db.documents.count_documents({'kind':'pks','officer_id':officer['id']})==0
+    def generate():return requests.post(live['url']+'/pks/generate',headers={'Authorization':'Bearer '+live['tokens']['admin']},json=body,timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:generate(),range(2)))
+    assert [r.status_code for r in responses]==[200,200],[r.text for r in responses]
+    record=responses[0].json();assert record['id']==responses[1].json()['id'] and record['status']=='DRAFT'
+    assert any(r['id']==record['id'] for r in call('admin','GET','/pks?state=DRAFT').json()['items'])
+    assert not any(r['id']==record['id'] for r in call('admin','GET','/pks?state=AKTIF').json()['items'])
+    assert db.documents.count_documents({'kind':'pks','officer_id':officer['id']})==1
+    stored=db.documents.find_one({'id':record['id']});assert stored['document_snapshot']['officer']['bank_account_number']=='00123456789'
+    original=call('admin','GET',record['url'][4:]).content
+    text='\n'.join(p.extract_text() for p in PdfReader(io.BytesIO(original)).pages)
+    assert '00123456789' in text and '3 (tiga) tahun' in text and 'PASAL 12' in text and 'DRAFT - BELUM' not in text
+    for role in ('officer','foreign'):call(role,'GET',record['url'][4:],404)
+    assert call('admin','GET','/pks/officers?search=Generated%20PKS%20QA').json()['items'][0]['pks_status']=='DRAFT'
+    call('admin','PUT','/petugas/'+officer['id'],json={'name':'Changed PKS QA','email':officer['email'],'nik':officer['nik']})
+    assert call('owner','GET',record['url'][4:]).content==original
+    assert db.users.find_one({'id':officer['id']})['bank_account_number']=='00123456789'
+    writer=PdfWriter();writer.add_blank_page(width=595,height=842);content=io.BytesIO();writer.write(content)
+    form={'submission_id':str(uuid.uuid4())};files={'file':('signed.pdf',content.getvalue(),'application/pdf')}
+    call('foreign','POST','/pks/'+record['id']+'/signed',404,data=form,files=files)
+    def archive():return requests.post(live['url']+'/pks/'+record['id']+'/signed',headers={'Authorization':'Bearer '+live['tokens']['owner']},data=form,files=files,timeout=30)
+    with ThreadPoolExecutor(max_workers=2) as pool:responses=list(pool.map(lambda _:archive(),range(2)))
+    assert [r.status_code for r in responses]==[200,200],[r.text for r in responses]
+    signed=responses[0].json();assert signed['signed_url']==responses[1].json()['signed_url'] and signed['status']=='AKTIF'
+    assert signed['start_date']==record['start_date'] and signed['end_date']==record['end_date']
+    assert db.documents.count_documents({'kind':'pks_signed','pks_id':record['id']})==1
+    assert call('admin','GET',record['url'][4:]).content==original
+    call('admin','POST','/pks/'+record['id']+'/signed',409,data={'submission_id':str(uuid.uuid4())},files=files)
+    call('owner','POST','/pks/'+record['id']+'/delete',json={'reason':'Koreksi PKS QA'})
+    assert not db.documents.find_one({'id':record['id']}) and not db.documents.find_one({'pks_id':record['id']})
+    call('admin','GET',record['url'][4:],404);call('owner','GET',signed['signed_url'][4:],404)
+    call('admin','POST','/petugas/'+officer['id']+'/delete')
+
+
+def test_generated_pks_audit_failure_rolls_back_number_and_document(live):
+    call,db=live['call'],live['db'];company=live['users']['admin']['company_id']
+    db.companies.update_one({'id':company},{'$set':{'alamat':'Jalan QA Banjarbaru','telepon':'081234567890','city':'Banjarbaru','director_position':'Direktur'}})
+    officer=call('admin','POST','/petugas',json={'name':'PKS Rollback QA','email':uuid.uuid4().hex+'@example.com','password':'Synthetic-password-123','nik':'6372041804860004','alamat':'Alamat QA','telepon':'0812345678','bank_name':'Bank QA','bank_account_number':'000123456789','bank_account_name':'PKS Rollback QA'}).json()
+    before=list(db.counters.find({}))
+    db.block_writes('audit_logs',True)
+    try:
+        call('admin','POST','/pks/generate',500,json={'officer_id':officer['id'],'duration':1,'unit':'TAHUN','submission_id':str(uuid.uuid4())})
+        assert not db.documents.find_one({'kind':'pks','officer_id':officer['id']})
+        assert list(db.counters.find({}))==before
+    finally:db.block_writes('audit_logs',False)
+    call('admin','POST','/petugas/'+officer['id']+'/delete')

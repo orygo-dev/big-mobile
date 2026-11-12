@@ -406,6 +406,11 @@ class PetugasInput(BusinessInput):
     jabatan: Optional[str] = "PROFCOLL"
     no_sertifikasi: Optional[str] = ""
     sertifikasi_valid_until: Optional[str] = ""
+    alamat: str = Field(default="", max_length=1200)
+    bank_name: str = Field(default="", max_length=160)
+    bank_branch: str = Field(default="", max_length=160)
+    bank_account_number: str = Field(default="", max_length=40)
+    bank_account_name: str = Field(default="", max_length=256)
 
 class CompanyInput(BusinessInput):
     nama: str = Field(min_length=1, max_length=256, pattern=r"\S")
@@ -899,6 +904,7 @@ async def create_petugas(data: PetugasInput, request: Request, user: dict = Depe
         "petugas_code": f"PTG-{seq:05d}",
         "nik": data.nik, "jabatan": data.jabatan,
         "no_sertifikasi": data.no_sertifikasi, "sertifikasi_valid_until": data.sertifikasi_valid_until,
+        **{key: getattr(data, key) for key in ("alamat", "bank_name", "bank_branch", "bank_account_number", "bank_account_name")},
         "avatar": "", "created_at": now_iso(), "updated_at": now_iso(),
     }
     await db.users.insert_one(doc)
@@ -921,6 +927,10 @@ async def update_petugas(pid: str, data: PetugasInput, request: Request, user: d
     upd = {"name": data.name, "email": data.email.lower().strip(), "telepon": data.telepon, "tim": data.tim, "status": data.status,
            "nik": data.nik, "jabatan": data.jabatan, "no_sertifikasi": data.no_sertifikasi,
            "sertifikasi_valid_until": data.sertifikasi_valid_until, "updated_at": now_iso()}
+    # Older clients may omit the new fields: do not erase existing identity/bank data.
+    for key in ("alamat", "bank_name", "bank_branch", "bank_account_number", "bank_account_name"):
+        if key in data.model_fields_set:
+            upd[key] = getattr(data, key)
     if data.password:
         if len(data.password) < 8:
             raise HTTPException(status_code=400, detail="Password wajib minimal 8 karakter")

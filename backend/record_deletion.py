@@ -93,10 +93,16 @@ def register(router, runtime):
 
     async def delete_document(identity,kind,request,data,user):
         scope={'id':identity,'company_id':user['company_id'],'kind':kind}
+        # The native repository uses FOR UPDATE inside this transaction.
         record=await runtime.db.documents.find_one(scope)
         if not record:raise HTTPException(404,'Data tidak ditemukan')
         await audit(runtime,user,request,'pembayaran leasing' if kind=='leasing_payment' else 'PKS',record,(data or DeletionInput()).reason)
-        await cleanup(runtime,user,[record])
+        files=[record]
+        if kind=='pks':
+            attachments={'company_id':user['company_id'],'kind':'pks_signed','pks_id':identity}
+            files += await runtime.db.documents.find(attachments).to_list(None)
+            await runtime.db.documents.delete_many(attachments)
+        await cleanup(runtime,user,files)
         await runtime.db.documents.delete_one(scope)
         return {'ok':True}
 

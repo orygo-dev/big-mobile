@@ -27,6 +27,7 @@ def period(duration, unit, start=None):
 
 
 def status(record, current=None):
+    if record.get('document_status') == 'DRAFT':return 'DRAFT'
     current = current or today()
     first, last = date.fromisoformat(record['start_date']), date.fromisoformat(record['end_date'])
     if current < first:return 'BELUM_AKTIF'
@@ -36,7 +37,7 @@ def status(record, current=None):
 
 
 def public(record, current=None):
-    return {**{key:value for key,value in record.items() if key not in {'_id','storage_path','fingerprint','company_id','kind'}}, 'status':status(record,current)}
+    return {**{key:value for key,value in record.items() if key not in {'_id','storage_path','fingerprint','company_id','kind','signed_fingerprint','signed_submission_id','document_snapshot'}}, 'status':status(record,current)}
 
 
 def register(router, runtime):
@@ -53,23 +54,27 @@ def register(router, runtime):
         rows = await runtime.db.users.find(query, {'id':1,'name':1,'petugas_code':1,'status':1}).sort([('name',1),('id',1)]).skip((page-1)*limit).limit(limit+1).to_list(limit+1)
         items = []
         for officer in rows[:limit]:
-            scope = {'company_id':user['company_id'], 'kind':KIND, 'officer_id':officer['id']}
+            scope = {'company_id':user['company_id'], 'kind':KIND, 'officer_id':officer['id'], 'document_status':{'$ne':'DRAFT'}}
             # Prefer a currently valid agreement over a future/expired history entry.
             existing = await runtime.db.documents.find({**scope,'start_date':{'$lte':current.isoformat()},'end_date':{'$gte':current.isoformat()}}, {'_id':0}).sort([('end_date',-1),('created_at',-1)]).to_list(1)
             if not existing:
                 existing = await runtime.db.documents.find(scope, {'_id':0}).sort([('end_date',-1),('created_at',-1)]).to_list(1)
+            if not existing:
+                existing = await runtime.db.documents.find({'company_id':user['company_id'],'kind':KIND,'officer_id':officer['id'],'document_status':'DRAFT'}, {'_id':0}).sort([('created_at',-1)]).to_list(1)
             record = existing[0] if existing else None
             items.append({**officer, 'pks_status':status(record,current) if record else 'BELUM_MEMILIKI', 'pks_end_date':record['end_date'] if record else None})
         return {'items':items, 'next_page':page+1 if len(rows)>limit else None}
 
     @router.get('/pks')
-    async def listing(search: str = Query('', max_length=120), state: Literal['','AKTIF','MENDEKATI_EXPIRED','EXPIRED','BELUM_AKTIF'] = '', page: int = Query(1, ge=1), limit: int = Query(50, ge=1, le=100), user: dict = Depends(runtime.admin_required)):
+    async def listing(search: str = Query('', max_length=120), state: Literal['','AKTIF','MENDEKATI_EXPIRED','EXPIRED','BELUM_AKTIF','DRAFT'] = '', page: int = Query(1, ge=1), limit: int = Query(50, ge=1, le=100), user: dict = Depends(runtime.admin_required)):
         current = today();day = current.isoformat();near = (current+timedelta(days=30)).isoformat()
         query = {'company_id':user['company_id'],'kind':KIND}
         if search.strip():query['officer_name'] = {'$regex':re.escape(search.strip()),'$options':'i'}
+        if state == 'DRAFT':query['document_status']='DRAFT'
+        elif state:query['document_status']={'$ne':'DRAFT'}
         if state == 'EXPIRED':query['end_date'] = {'$lt':day}
         elif state == 'BELUM_AKTIF':query['start_date'] = {'$gt':day}
-        elif state:
+        elif state in ('AKTIF','MENDEKATI_EXPIRED'):
             query['start_date'] = {'$lte':day}
             query['end_date'] = {'$gt':near} if state=='AKTIF' else {'$gte':day,'$lte':near}
         rows = await runtime.db.documents.find(query, {'_id':0}).sort([('created_at',-1),('id',-1)]).skip((page-1)*limit).limit(limit+1).to_list(limit+1)
@@ -111,3 +116,7 @@ def register(router, runtime):
             await runtime.log_audit(user,'Membuat PKS petugas',KIND,identity,request)
             return public(record)
         return await runtime.transactions.run(runtime.client,commit)
+
+    import pks_generation
+    import sys
+    pks_generation.register(router,runtime,sys.modules[__name__])

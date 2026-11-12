@@ -11,7 +11,7 @@ import EmptyState from "@/components/EmptyState";
 import { Users, Plus, Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-const EMPTY = { name: "", email: "", password: "", telepon: "", tim: "", status: "aktif", nik: "", jabatan: "PROFCOLL", no_sertifikasi: "", sertifikasi_valid_until: "" };
+const EMPTY = { alamat: "", bank_name: "", bank_branch: "", bank_account_number: "", bank_account_name: "", name: "", email: "", password: "", telepon: "", tim: "", status: "aktif", nik: "", jabatan: "PROFCOLL", no_sertifikasi: "", sertifikasi_valid_until: "" };
 
 export default function Petugas() {
   const [items, setItems] = useState([]);
@@ -91,7 +91,7 @@ export default function Petugas() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md" data-testid="petugas-dialog">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto" data-testid="petugas-dialog">
           <DialogHeader><DialogTitle className="font-heading">{editing ? "Edit Petugas" : "Tambah Petugas"}</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <div><Label>Nama Lengkap *</Label><Input value={form.name} onChange={set("name")} className="mt-1.5 rounded-xl" data-testid="petugas-nama-input" /></div>
@@ -109,6 +109,9 @@ export default function Petugas() {
               <div><Label>No. Sertifikasi</Label><Input value={form.no_sertifikasi} onChange={set("no_sertifikasi")} className="mt-1.5 rounded-xl" data-testid="petugas-sertifikasi-input" /></div>
               <div><Label>Sertifikasi s.d.</Label><Input type="date" value={form.sertifikasi_valid_until || ""} onChange={set("sertifikasi_valid_until")} className="mt-1.5 rounded-xl" data-testid="petugas-sertifikasi-date" /></div>
             </div>
+            <div><Label htmlFor="petugas-alamat">Alamat sesuai KTP</Label><Input id="petugas-alamat" maxLength={1200} value={form.alamat || ""} onChange={set("alamat")} className="mt-1.5 rounded-xl" data-testid="petugas-alamat-input" /></div>
+            <p className="text-xs text-slate-500">Identitas dan rekening berikut digunakan untuk pembuatan PKS otomatis. Nomor rekening disimpan sebagai teks agar angka nol di depan tetap utuh.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{[["bank_name","Nama Bank"],["bank_branch","Cabang Bank (opsional)"],["bank_account_number","Nomor Rekening"],["bank_account_name","Atas Nama Rekening"]].map(([key,label])=><div key={key}><Label htmlFor={`petugas-${key}`}>{label}</Label><Input id={`petugas-${key}`} value={form[key] || ""} maxLength={key==='bank_account_number'?40:key==='bank_account_name'?256:160} inputMode={key==='bank_account_number'?'numeric':undefined} onChange={set(key)} data-testid={`petugas-${key}`} className="mt-1.5 rounded-xl" /></div>)}</div>
             <div><Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                 <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
