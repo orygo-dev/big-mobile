@@ -205,7 +205,7 @@ export default function PdfReadOnlyPreview({ blob, filename = "PKS.pdf" }) {
     return () => observer.disconnect();
   }, [document]);
   return (
-    <div className="space-y-3" data-testid="pks-pdf-preview">
+    <div className="space-y-3 min-w-0" data-testid="pks-pdf-preview">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-xs text-slate-600" data-testid="pdf-page-count">
           {document
@@ -239,7 +239,7 @@ export default function PdfReadOnlyPreview({ blob, filename = "PKS.pdf" }) {
         role="region"
         aria-label="Dokumen PDF. Gulir ke bawah untuk membaca halaman berikutnya."
         data-testid="pdf-scroll-container"
-        className="relative rounded-xl border bg-slate-100 p-2 overflow-auto h-[65vh] min-h-48 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        className="relative rounded-xl border bg-slate-100 p-2 overflow-auto h-[65vh] min-h-48 min-w-0 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         style={{ scrollbarGutter: "stable" }}
       >
         {!document && !error && (
@@ -262,7 +262,7 @@ export default function PdfReadOnlyPreview({ blob, filename = "PKS.pdf" }) {
               }}
               data-page-number={page.number}
               data-testid={`pdf-page-${page.number}`}
-              className="mx-auto mb-4 last:mb-0"
+              className="mx-auto mb-4 last:mb-0 max-w-full"
               style={{ width }}
             >
               <div

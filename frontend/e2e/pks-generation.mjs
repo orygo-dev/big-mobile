@@ -390,6 +390,23 @@ try {
               .getAttribute("href")
           ).startsWith("blob:"),
         );
+        // Resize an already-open preview: fixed-width canvases must not widen the dialog.
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForFunction(() => {
+          const dialog = document.querySelector('[role="dialog"]');
+          return dialog && dialog.scrollWidth <= dialog.clientWidth;
+        });
+        await page.getByTestId("pdf-scroll-container").focus();
+        await page.keyboard.press("End");
+        await page
+          .getByTestId("pdf-page-2")
+          .locator("canvas")
+          .waitFor({ state: "visible" });
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.waitForFunction(() => {
+          const dialog = document.querySelector('[role="dialog"]');
+          return dialog && dialog.scrollWidth <= dialog.clientWidth;
+        });
         await page.keyboard.press("Escape");
         await page.getByRole("dialog").waitFor({ state: "detached" });
         await page.getByTestId("pks-create").click();
