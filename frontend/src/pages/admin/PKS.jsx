@@ -1,6 +1,6 @@
 import DeleteDataButton from "@/components/DeleteDataButton";
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
-import api, { errMsg, fileUrl } from "@/lib/api";
+import api, { errMsg } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -786,8 +786,12 @@ function StoredPreview({ target, onClose }) {
     const controller = new AbortController();
     setBlob(null);
     setError("");
+    if (!target.url?.startsWith("/api/files/")) {
+      setError("URL dokumen PKS tidak valid.");
+      return;
+    }
     api
-      .get(fileUrl(target.url), {
+      .get(target.url.slice(4), {
         responseType: "blob",
         signal: controller.signal,
         timeout: 120000,

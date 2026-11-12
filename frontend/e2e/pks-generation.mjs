@@ -107,6 +107,10 @@ try {
           const req = route.request(),
             url = new URL(req.url()),
             p = url.pathname;
+          assert(
+            !p.startsWith("/api/api/"),
+            "Private file requests must use the API prefix exactly once",
+          );
           let body = {};
           if (p === "/api/auth/me")
             body = { id: role, role, name: role, email: role + "@example.com" };
@@ -355,6 +359,7 @@ try {
           .getByRole("button", { name: "Lihat PKS", exact: true })
           .click();
         await page.getByTestId("pks-pdf-preview").waitFor();
+        await page.getByText("Halaman 1 / 2", { exact: true }).waitFor();
         assert(
           (
             await page
