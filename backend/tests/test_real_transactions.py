@@ -875,6 +875,11 @@ def test_generated_pks_snapshot_concurrent_retry_signed_archive_and_delete(live)
     assert [r.status_code for r in responses]==[200,200],[r.text for r in responses]
     record=responses[0].json();assert record['id']==responses[1].json()['id'] and record['status']=='DRAFT'
     assert record['document_number'].split('/')[1]=='BIG-PKSM'
+    for term in ('Generated PKS QA', record['document_number'], 'big-pksm'):
+        matches=call('admin','GET','/pks',params={'search':term}).json()['items']
+        assert any(r['id']==record['id'] for r in matches)
+        assert not call('foreign','GET','/pks',params={'search':term}).json()['items']
+    assert not call('admin','GET','/pks',params={'search':'[no literal match]'}).json()['items']
     assert any(r['id']==record['id'] for r in call('admin','GET','/pks?state=DRAFT').json()['items'])
     assert not any(r['id']==record['id'] for r in call('admin','GET','/pks?state=AKTIF').json()['items'])
     assert db.documents.count_documents({'kind':'pks','officer_id':officer['id']})==1

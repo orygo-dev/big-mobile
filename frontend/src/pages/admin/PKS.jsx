@@ -995,7 +995,8 @@ export default function PKS() {
       </div>
       <div className="brand-panel rounded-2xl border border-slate-200 p-4 flex flex-wrap gap-3">
         <Input
-          placeholder="Cari nama petugas..."
+          placeholder="Cari nama petugas atau nomor PKS..."
+          aria-label="Cari nama petugas atau nomor PKS"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);

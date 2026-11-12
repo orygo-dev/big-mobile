@@ -69,7 +69,9 @@ def register(router, runtime):
     async def listing(search: str = Query('', max_length=120), state: Literal['','AKTIF','MENDEKATI_EXPIRED','EXPIRED','BELUM_AKTIF','DRAFT'] = '', page: int = Query(1, ge=1), limit: int = Query(50, ge=1, le=100), user: dict = Depends(runtime.admin_required)):
         current = today();day = current.isoformat();near = (current+timedelta(days=30)).isoformat()
         query = {'company_id':user['company_id'],'kind':KIND}
-        if search.strip():query['officer_name'] = {'$regex':re.escape(search.strip()),'$options':'i'}
+        if search.strip():
+            pattern = {'$regex':re.escape(search.strip()),'$options':'i'}
+            query['$or'] = [{'officer_name':pattern},{'document_number':pattern}]
         if state == 'DRAFT':query['document_status']='DRAFT'
         elif state:query['document_status']={'$ne':'DRAFT'}
         if state == 'EXPIRED':query['end_date'] = {'$lt':day}

@@ -126,3 +126,15 @@ def test_officer_with_pks_cannot_be_deleted(local_api):
     api,db=local_api;db.users.find_one.return_value=OFFICER;db.documents.find_one.return_value={'kind':'pks'}
     assert api.delete('/api/petugas/'+OFFICER['id']).status_code==409
     db.users.delete_one.assert_not_called()
+
+def test_search_matches_name_or_number_as_literal_with_company_and_status(local_api,monkeypatch):
+    api,db=local_api;setup(db,monkeypatch)
+    cursor=db.documents.find.return_value;cursor.limit.return_value=cursor
+    assert api.get('/api/pks',params={'search':'  001/BIG-PKSM.[XI]  ','state':'DRAFT'}).status_code==200
+    query=db.documents.find.call_args.args[0]
+    assert query['company_id']==ADMIN['company_id'] and query['kind']=='pks'
+    assert query['document_status']=='DRAFT'
+    assert query['$or']==[
+        {'officer_name':{'$regex':r'001/BIG\-PKSM\.\[XI\]','$options':'i'}},
+        {'document_number':{'$regex':r'001/BIG\-PKSM\.\[XI\]','$options':'i'}},
+    ]

@@ -233,8 +233,16 @@ try {
             body = {
               items: records.filter(
                 (r) =>
-                  !url.searchParams.get("state") ||
-                  r.status === url.searchParams.get("state"),
+                  (!url.searchParams.get("state") ||
+                    r.status === url.searchParams.get("state")) &&
+                  (!url.searchParams.get("search") ||
+                    [r.officer_name, r.document_number].some((value) =>
+                      (value || "")
+                        .toLowerCase()
+                        .includes(
+                          url.searchParams.get("search").trim().toLowerCase(),
+                        ),
+                    )),
               ),
               next_page: null,
             };
@@ -355,6 +363,28 @@ try {
           .getByText("Draft · Belum Ditandatangani", { exact: true })
           .waitFor();
         assert.equal(generated, 1);
+        await page.getByTestId("pks-search").fill("big-pksm");
+        await page.waitForResponse(
+          (r) =>
+            new URL(r.url()).pathname === "/api/pks" &&
+            new URL(r.url()).searchParams.get("search") === "big-pksm",
+        );
+        await page
+          .getByTestId("pks-row")
+          .filter({ hasText: "007/BIG-PKSM/XI/2026" })
+          .waitFor();
+        await page.getByTestId("pks-search").fill("tidak-ada-hasil");
+        await page.getByTestId("pks-row").waitFor({ state: "detached" });
+        await page.getByText("Belum ada PKS", { exact: true }).waitFor();
+        await page.getByTestId("pks-search").fill("mitra contoh");
+        await page.getByTestId("pks-row").waitFor();
+        await page.getByTestId("pks-search").fill("");
+        await page.waitForResponse(
+          (r) =>
+            new URL(r.url()).pathname === "/api/pks" &&
+            !new URL(r.url()).searchParams.get("search"),
+        );
+        await page.getByTestId("pks-row").waitFor();
         profile = { ...profile, name: "Nama Diubah" };
         assert(
           (await page.getByTestId("pks-row").innerText()).includes(
