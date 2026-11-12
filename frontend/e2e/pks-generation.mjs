@@ -6,20 +6,23 @@ import assert from "node:assert/strict";
 import { chromium, firefox } from "../node_modules/@playwright/test/index.mjs";
 const root = path.resolve(process.env.PKS_BUILD_ROOT || "frontend/build");
 fs.mkdirSync(".local", { recursive: true });
-function fixturePDF() {
-  const streams = [
-    "BT /F1 18 Tf 40 750 Td (PREVIEW PKS - Halaman 1) Tj ET",
-    "BT /F1 18 Tf 40 750 Td (PASAL 12 - Halaman 2) Tj ET",
-  ];
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>",
-    `<< /Length ${streams[0].length} >>\nstream\n${streams[0]}\nendstream`,
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>",
-    `<< /Length ${streams[1].length} >>\nstream\n${streams[1]}\nendstream`,
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>",
-  ];
+function fixturePDF(pageCount = 2) {
+  const font = 3 + pageCount * 2,
+    objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      `<< /Type /Pages /Kids [${Array.from({ length: pageCount }, (_, i) => `${3 + i * 2} 0 R`).join(" ")}] /Count ${pageCount} >>`,
+    ];
+  for (let i = 0; i < pageCount; i++) {
+    const landscape = pageCount > 2 && i % 2 === 1,
+      w = landscape ? 842 : 595,
+      h = landscape ? 595 : 842;
+    const stream = `BT /F1 18 Tf 40 ${h - 50} Td (PREVIEW PKS - Halaman ${i + 1}) Tj ET`;
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /Font << /F1 ${font} 0 R >> >> /Contents ${4 + i * 2} 0 R >>`,
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    );
+  }
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>");
   let data = "%PDF-1.4\n",
     offsets = [0];
   objects.forEach((o, i) => {
@@ -28,12 +31,12 @@ function fixturePDF() {
   });
   const xref = Buffer.byteLength(data);
   data +=
-    `xref\n0 8\n0000000000 65535 f \n` +
+    `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` +
     offsets
       .slice(1)
       .map((n) => `${String(n).padStart(10, "0")} 00000 n \n`)
       .join("") +
-    `trailer\n<< /Root 1 0 R /Size 8 >>\nstartxref\n${xref}\n%%EOF\n`;
+    `trailer\n<< /Root 1 0 R /Size ${objects.length + 1} >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(data);
 }
 const pdf = fixturePDF();
@@ -84,6 +87,7 @@ try {
           if (message.type() === "error" || message.type() === "warning")
             console.log(engine, message.type(), message.text());
         });
+        let filePdf = pdf;
         let records = [],
           missing = false,
           generated = 0,
@@ -235,7 +239,10 @@ try {
               next_page: null,
             };
           else if (p.startsWith("/api/files/"))
-            return route.fulfill({ contentType: "application/pdf", body: pdf });
+            return route.fulfill({
+              contentType: "application/pdf",
+              body: filePdf,
+            });
           await route.fulfill({
             contentType: "application/json",
             body: JSON.stringify(body),
@@ -306,24 +313,36 @@ try {
             )?.value === "00123456789",
         );
         await page.getByTestId("pks-preview").click();
-        await page.locator('[data-testid="pks-pdf-preview"] canvas').waitFor();
+        await page.getByTestId("pdf-page-1").locator("canvas").waitFor();
         await page.waitForFunction(
           () =>
             document.querySelector('[data-testid="pks-pdf-preview"] canvas')
               ?.width > 0,
         );
         await page
-          .getByRole("button", { name: "Berikutnya", exact: true })
-          .click()
-          .catch(async (error) => {
-            console.log(await page.getByRole("dialog").innerText());
-            await page.screenshot({
-              path: ".local/pks-preview-failure.png",
-              fullPage: true,
-            });
-            throw error;
-          });
-        await page.getByText("Halaman 2 / 2", { exact: true }).waitFor();
+          .getByTestId("pdf-page-count")
+          .filter({ hasText: "2 halaman" })
+          .waitFor();
+        const continuous = page.getByTestId("pdf-scroll-container");
+        await continuous.scrollIntoViewIfNeeded();
+        await continuous.hover();
+        await page.mouse.wheel(0, 1200);
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-testid="pdf-scroll-container"]')
+              ?.scrollTop > 0,
+        );
+        await page
+          .getByTestId("pdf-page-2")
+          .locator("canvas")
+          .waitFor({ state: "visible" });
+        assert.equal(
+          await page
+            .getByRole("dialog")
+            .getByRole("button", { name: "Berikutnya", exact: true })
+            .count(),
+          0,
+        );
         await page.screenshot({
           path: `.local/pks-${engine}-${role}-draft.png`,
           fullPage: true,
@@ -359,7 +378,11 @@ try {
           .getByRole("button", { name: "Lihat PKS", exact: true })
           .click();
         await page.getByTestId("pks-pdf-preview").waitFor();
-        await page.getByText("Halaman 1 / 2", { exact: true }).waitFor();
+        await page
+          .getByTestId("pdf-page-count")
+          .filter({ hasText: "2 halaman" })
+          .waitFor();
+        await page.getByTestId("pdf-page-1").locator("canvas").waitFor();
         assert(
           (
             await page
@@ -395,6 +418,46 @@ try {
             document.querySelectorAll('[data-testid="pks-row"]').length === 1,
         );
         await page.setViewportSize({ width: 390, height: 844 });
+        filePdf = fixturePDF(40);
+        await page
+          .getByRole("button", { name: "Lihat PKS", exact: true })
+          .click();
+        await page
+          .getByTestId("pdf-page-count")
+          .filter({ hasText: "40 halaman" })
+          .waitFor();
+        await page.getByTestId("pdf-page-1").locator("canvas").waitFor();
+        assert.equal(await page.locator("[data-page-number]").count(), 40);
+        assert(
+          (await page
+            .locator('[data-testid="pks-pdf-preview"] canvas')
+            .count()) < 10,
+        );
+        const scroll = page.getByTestId("pdf-scroll-container");
+        await scroll.focus();
+        await page.keyboard.press("End");
+        await page
+          .getByTestId("pdf-page-40")
+          .locator("canvas")
+          .waitFor({ state: "visible" });
+        await page
+          .getByTestId("pdf-page-1")
+          .locator("canvas")
+          .waitFor({ state: "detached" });
+        assert(
+          (await page
+            .locator('[data-testid="pks-pdf-preview"] canvas')
+            .count()) < 10,
+        );
+        await scroll.focus();
+        await page.keyboard.press("Home");
+        await page
+          .getByTestId("pdf-page-1")
+          .locator("canvas")
+          .waitFor({ state: "visible" });
+        await page.keyboard.press("Escape");
+        await page.getByRole("dialog").waitFor({ state: "detached" });
+
         await page.getByTestId("pks-create").click();
         await page.getByTestId("pks-officer-search").click();
         await page.getByTestId("pks-officer-officer").click();
@@ -411,7 +474,7 @@ try {
         );
         assert.equal(errors.length, 0, errors.join("\n"));
         console.log(
-          `PASS PKS ${engine}/${role}: picker, authoritative identity, read-only fields, missing-data validation, PDF.js preview/pages/download, draft generation, signed archive, old upload, scoped delete, mobile`,
+          `PASS PKS ${engine}/${role}: picker, authoritative identity, read-only fields, missing-data validation, PDF.js preview/pages/download, draft generation, signed archive, old upload, scoped delete, mobile, continuous wheel/keyboard scrolling and bounded canvases for 40 mixed-size pages`,
         );
         await context.close();
       }
