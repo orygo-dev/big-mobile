@@ -44,6 +44,9 @@ export default function ReportPayment({report, admin = false, onSaved, compact =
   return <section id={admin?"pembayaran":undefined} className={compact?"mt-3 space-y-2 border-t border-slate-100 pt-3":"brand-panel rounded-2xl border border-slate-200 p-5 space-y-3"}>
     <div className="flex items-center justify-between gap-3 flex-wrap"><h2 className="font-heading font-semibold text-slate-800">Pembayaran Tim</h2>{!compact&&<PaymentBadge status={report.payment_status} />}</div>
     <p className="text-xl font-bold text-slate-900" data-testid="payment-amount">{rupiah(report.payment_amount)}</p>
+    {Number(report.tax_rate) > 0 && <p className="text-sm text-slate-600">
+      Sebelum pajak {rupiah(report.payment_gross_amount)} · Potongan {Number(report.tax_rate).toLocaleString("id-ID")}% ({rupiah(report.tax_amount)})
+    </p>}
     <p className="text-xs text-slate-500">Nominal total untuk satu penugasan/tim.</p>
     {report.payment_proof ? <a href={fileUrl(report.payment_proof.url)} target="_blank" rel="noopener noreferrer" className="block break-all rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800" data-testid="payment-proof-link">Buka bukti pembayaran · {report.payment_proof.name || "Bukti pembayaran"}</a> : admin ? <form onSubmit={submit} className="space-y-3">
       {!report.payment_amount && <label className="block text-sm">Nominal pembayaran tim (Rp)<Input type="number" min="0.01" step="0.01" max="999999999999.99" required value={amount} onChange={event=>{setAmount(event.target.value);pending.current=null;}} data-testid="payment-legacy-amount" /></label>}

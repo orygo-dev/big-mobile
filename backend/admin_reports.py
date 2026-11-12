@@ -2,7 +2,7 @@
 import hashlib
 import json
 import uuid
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, timezone
 from fastapi import Depends, File, Form, HTTPException, Query, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
@@ -21,6 +21,23 @@ def amount(value):
         return format(parsed, ".2f")
     except (InvalidOperation, ValueError, TypeError):
         raise HTTPException(400, "Nominal pembayaran tim harus lebih dari nol, maksimal 999999999999.99 dan dua angka desimal")
+
+
+def payment_tax(gross, value):
+    try:
+        rate = Decimal(value)
+        if not rate.is_finite() or not 0 <= rate <= 100 or rate.as_tuple().exponent < -2:
+            raise ValueError()
+    except (InvalidOperation, ValueError, TypeError):
+        raise HTTPException(400, "Pajak harus antara 0 dan 100 persen, maksimal dua angka desimal")
+    gross_value = Decimal(gross)
+    deduction = (gross_value * rate / 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    net = amount(gross_value - deduction)
+    return net, {
+        "payment_gross_amount": gross,
+        "tax_rate": format(abs(rate), ".2f"),
+        "tax_amount": format(deduction, ".2f"),
+    }
 
 
 def request_id(value):
@@ -85,9 +102,10 @@ def register(router, runtime):
         return {"items": items, "next_page": page+1 if len(rows)>limit else None}
 
     @router.post("/laporan")
-    async def create(request: Request, assignment_id: str = Form(...), client_report_id: str = Form(""), payment_amount: str = Form(""), catatan: str = Form(""), status: str = Form("LAINNYA"), photos: list[UploadFile] = File(default=[]), payment_proof: UploadFile | None = File(None), user: dict = Depends(runtime.admin_required)):
+    async def create(request: Request, assignment_id: str = Form(...), client_report_id: str = Form(""), payment_amount: str = Form(""), tax_rate: str = Form("0"), catatan: str = Form(""), status: str = Form("LAINNYA"), photos: list[UploadFile] = File(default=[]), payment_proof: UploadFile | None = File(None), user: dict = Depends(runtime.admin_required)):
         key = request_id(client_report_id)
-        nominal = amount(payment_amount)
+        gross = amount(payment_amount)
+        nominal, tax = payment_tax(gross, tax_rate)
         if len(catatan) > 4000 or status not in runtime.ACCOUNT_STATUS_MAP:
             raise HTTPException(400, "Catatan maksimal 4.000 karakter dan hasil laporan harus valid")
         assignment = await runtime.db.assignments.find_one({"id": assignment_id, "company_id": user["company_id"]})
@@ -102,7 +120,10 @@ def register(router, runtime):
             prepared.append(await validate_upload(payment_proof, runtime, payment=True))
         if sum(len(item["content"]) for item in prepared) > 40*1024*1024:
             raise HTTPException(400, "Total bukti laporan dan pembayaran maksimal 40 MB")
-        digest = fingerprint([assignment_id, nominal, catatan, status], prepared)
+        values = [assignment_id, gross, catatan, status]
+        if Decimal(tax["tax_rate"]):
+            values.append(tax["tax_rate"])
+        digest = fingerprint(values, prepared)
         async def cached(existing):
             if existing.get("client_report_id") == key and existing.get("submission_fingerprint") == digest:
                 photos = await runtime.db.report_photos.find({"report_id": existing["id"], "kind": {"$ne": "payment"}}, {"_id": 0}).to_list(10)
@@ -126,6 +147,7 @@ def register(router, runtime):
                 person = await runtime.db.users.find_one({"id": identity, "company_id": user["company_id"]}, {"name": 1}) or {}
                 names.append(person.get("name", "-"))
         record = {"id": report_id, "company_id": user["company_id"], "assignment_id": assignment_id, "submission_key": assignment_id, "assignment_letter_id": letter["id"], "account_id": assignment["account_id"], "petugas_id": ids[0], "petugas_ids": ids, "team_names": names, "created_by": user["id"], "created_by_name": user["name"], "created_role": user["role"], "client_report_id": key, "submission_fingerprint": digest, "payment_scope": "TEAM", "payment_amount": nominal, "payment_status": state, "report_status": state, "status": status, "catatan": catatan.strip(), "latitude": None, "longitude": None, "catatan_admin": "", "reviewed": False, "created_at": runtime.now_iso(), "updated_at": runtime.now_iso()}
+        record.update(tax)
         if proof:
             record.update(payment_proof=proof, payment_recorded_at=runtime.now_iso(), payment_recorded_by=user["id"])
         async def commit():

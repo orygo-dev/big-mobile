@@ -143,6 +143,8 @@ try {
               ][i],
               status: "LAINNYA",
             }));
+          else if (p === "/api/laporan-options")
+            body = { items: [], next_page: null };
           else if (p === "/api/akun")
             body = { items: [], total: 0, page: 1, limit: 10 };
           else if (p === "/api/petugas")
@@ -276,6 +278,17 @@ try {
           .getByRole("button", { name: "Lihat Semua", exact: true })
           .click();
         assert(page.url().endsWith("/admin/laporan"));
+        await page.getByTestId("laporan-create-button").click();
+        const reportDialog = page.getByRole("dialog");
+        const received = reportDialog.getByText("Diterima tim", { exact: true }).locator("..");
+        await reportDialog.getByTestId("admin-report-amount").fill("500000");
+        assert.match(await received.innerText(), /500\.000/);
+        await reportDialog.getByTestId("admin-report-tax-rate").fill("2");
+        assert.match(await received.innerText(), /490\.000/);
+        await reportDialog.getByTestId("admin-report-tax-rate").fill("2.50");
+        assert.match(await received.innerText(), /487\.500/);
+        await page.keyboard.press("Escape");
+        await reportDialog.waitFor({ state: "detached" });
 
         await page.goto(origin + "/admin");
         await page.getByTestId("activity-view-report-0").waitFor();

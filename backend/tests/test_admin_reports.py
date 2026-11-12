@@ -2,7 +2,7 @@ import uuid
 from unittest.mock import Mock
 import pytest
 from test_local_regressions import local_api, server, ADMIN, OFFICER, bearer, configure_admin_report, admin_report_data, admin_report_photos, login_background_png
-from admin_reports import amount, fingerprint
+from admin_reports import amount, fingerprint, payment_tax
 from fastapi import HTTPException
 
 
@@ -38,6 +38,34 @@ def test_create_paid_report_does_not_mix_proof_with_field_images(local_api, monk
     assert report['payment_status'] == 'SELESAI' and report['payment_proof']['kind'] == 'payment'
     assert len(report['photos']) == 1
     assert [call.args[0]['kind'] for call in db.report_photos.insert_one.call_args_list] == ['report','payment']
+
+
+def test_report_stores_gross_tax_and_net_payment(local_api, monkeypatch):
+    api, db = local_api
+    configure_admin_report(db, monkeypatch)
+    response = api.post(
+        '/api/laporan',
+        data={**admin_report_data(), 'tax_rate': '2'},
+        files=admin_report_photos(),
+    )
+    assert response.status_code == 200, response.text
+    stored = db.field_reports.insert_one.call_args.args[0]
+    assert stored['payment_gross_amount'] == '500000.00'
+    assert stored['tax_rate'] == '2.00'
+    assert stored['tax_amount'] == '10000.00'
+    assert stored['payment_amount'] == '490000.00'
+
+
+def test_tax_rounds_half_up():
+    net, tax = payment_tax('1.00', '2.50')
+    assert net == '0.97'
+    assert tax['tax_amount'] == '0.03'
+
+
+@pytest.mark.parametrize('rate', ['-1', '100', '101', 'NaN', '2.345'])
+def test_tax_rejects_invalid_rate_or_zero_net(rate):
+    with pytest.raises(HTTPException):
+        payment_tax('500000.00', rate)
 
 
 def test_report_requires_field_evidence_even_if_payment_is_uploaded(local_api, monkeypatch):
