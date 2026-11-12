@@ -9,6 +9,11 @@ import aiomysql
 import pymysql
 from assignment_team import member_query
 
+FINANCE_SOURCES = (
+            ('PEMASUKAN','bm_documents','g_created_at',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.kind'))='leasing_payment'"),
+            ('PENGELUARAN','bm_field_reports',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_recorded_at'))","JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_status'))='SELESAI' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_proof.url')) LIKE '/api/files/%%'")
+)
+
 class DuplicateKeyError(Exception): pass
 class ConnectionFailure(Exception): pass
 class ReturnDocument:
@@ -280,13 +285,21 @@ class Database:
         sql=f'SELECT a.payload FROM bm_assignments a LEFT JOIN bm_field_reports r ON r.g_assignment_id=a.g_id AND r.g_company_id=a.g_company_id WHERE {where} AND r._pk IS NULL ORDER BY a.g_created_at DESC,a.g_id ASC LIMIT %s OFFSET %s'
         rows=await self.execute(sql,[*params,limit+1,(page-1)*limit],fetch=True)
         return [json.loads(row[0]) for row in rows]
+    async def finance_daily(self,company_id,start,end):
+        """Tenant-scoped daily cash sums, using the same authoritative sources as finance_report."""
+        sources=[];parameters=[]
+        for direction,table,date_field,condition in FINANCE_SOURCES:
+            where=f"g_company_id=%s AND {condition} AND {date_field} IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_amount')) IS NOT NULL AND {date_field}>=%s AND {date_field}<%s"
+            sources.append(f"SELECT {date_field} AS occurred_at, '{direction}' AS direction, CAST(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_amount')) AS DECIMAL(20,2)) AS amount FROM {table} WHERE {where}")
+            parameters.extend([company_id,start,end])
+        # App timestamps are stored in UTC ISO format; numeric offsets need no MySQL timezone tables.
+        day="DATE_FORMAT(DATE_ADD(CAST(REPLACE(LEFT(occurred_at,19),'T',' ') AS DATETIME), INTERVAL 7 HOUR),'%%Y-%%m-%%d')"
+        return await self.execute(f"SELECT {day} AS cash_day,direction,SUM(amount) FROM ({' UNION ALL '.join(sources)}) entries GROUP BY cash_day,direction ORDER BY cash_day,direction",parameters,fetch=True)
+
     async def finance_report(self,company_id,start,end,kind,page,limit,export=False):
         """One consistent, tenant-scoped read; totals cover the whole filter, not one page."""
         sources=[];parameters=[]
-        for source,table,date_field,condition in (
-            ('PEMASUKAN','bm_documents','g_created_at',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.kind'))='leasing_payment'"),
-            ('PENGELUARAN','bm_field_reports',"JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_recorded_at'))","JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_status'))='SELESAI' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.payment_proof.url')) LIKE '/api/files/%%'")
-        ):
+        for source,table,date_field,condition in FINANCE_SOURCES:
             if kind and kind!=source:continue
             where=f'g_company_id=%s AND {condition} AND {date_field} IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(payload,\'$.payment_amount\')) IS NOT NULL'
             values=[company_id]

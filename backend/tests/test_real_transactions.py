@@ -921,3 +921,15 @@ def test_generated_pks_audit_failure_rolls_back_number_and_document(live):
         assert list(db.counters.find({}))==before
     finally:db.block_writes('audit_logs',False)
     call('admin','POST','/petugas/'+officer['id']+'/delete')
+
+
+def test_dashboard_finance_trends_match_monthly_totals(live):
+    call = live["call"]
+    for role in ('admin', 'owner', 'foreign'):
+        totals = call(role, 'GET', '/dashboard/finance').json()
+        trends = call(role, 'GET', '/dashboard/finance-trends').json()
+        assert trends['month'] == totals['month']
+        for key in ('income', 'expense', 'profit'):
+            assert trends['metrics'][key]['current'] == totals[key]
+            assert trends['series'][-1][key] == totals[key]
+    call('officer', 'GET', '/dashboard/finance-trends', expected=403)

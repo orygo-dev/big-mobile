@@ -86,3 +86,6 @@ def register(router, runtime):
         except runtime.DuplicateKeyError:raise HTTPException(409,'Email sudah digunakan')
         await runtime.log_audit(user,'Membuat pengguna admin','user',record['id'],request)
         return record
+
+    import dashboard_trends
+    dashboard_trends.register(router,runtime)

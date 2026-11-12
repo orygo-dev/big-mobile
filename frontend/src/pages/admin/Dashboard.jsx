@@ -5,6 +5,7 @@ import LoadError from "@/components/LoadError";
 import { formatDateTime, REPORT_STATUS } from "@/lib/constants";
 import { StatusBadge } from "@/components/StatusBadge";
 import EmptyState from "@/components/EmptyState";
+import {percentageLabel, sparkline} from "@/lib/dashboard-metrics";
 import {
   FileText,
   Car,
@@ -36,6 +37,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  LabelList,
 } from "recharts";
 const STATS = [
   ["surat_kuasa_aktif", "blue", "Surat Kuasa Aktif", FileText],
@@ -98,22 +100,15 @@ function BusinessClock() {
     </div>
   );
 }
-function Ornament() {
-  return (
-    <svg className="finance-ornament" viewBox="0 0 120 60" aria-hidden="true">
-      <path
-        d="M0 57C10 42 12 57 22 45S36 50 44 35S61 43 70 24S86 39 98 18L119 0V60H0Z"
-        fill="currentColor"
-        opacity=".08"
-      />
-      <path
-        d="M0 57C10 42 12 57 22 45S36 50 44 35S61 43 70 24S86 39 98 18L119 0"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
+function TrendLine({series,metric,label}) {
+  const points=sparkline(series.map(day=>day[metric]));
+  if(!points)return null;
+  return <svg className="finance-ornament" viewBox="0 0 120 52" role="img" aria-label={`Grafik kumulatif ${label.toLowerCase()} dalam bulan berjalan`}><polygon points={`2,52 ${points} 118,52`} fill="currentColor" opacity=".1"/><polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round"/></svg>;
+}
+function BarValue({x,y,width,value,index}) {
+  const left=Number(x)+Number(width)/2,top=Math.max(10,Number(y)-19);
+  if(!Number.isFinite(left)||!Number.isFinite(top))return null;
+  return <g data-testid={`report-bar-label-${index}`}><rect x={left-15} y={top-10} width={30} height={20} rx={7} fill="#edf3ff"/><text x={left} y={top+4} textAnchor="middle" fill="#18386d" fontSize={11} fontWeight={600}>{value}</text></g>;
 }
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -125,6 +120,7 @@ export default function Dashboard() {
     }),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
+  const [trends,setTrends]=useState(null),[trendsLoading,setTrendsLoading]=useState(true);
   const request = useRef(null);
   const load = useCallback(async () => {
     request.current?.abort();
@@ -132,6 +128,9 @@ export default function Dashboard() {
     request.current = controller;
     setLoading(true);
     setError("");
+    setTrends(null);setTrendsLoading(true);
+    // Comparative analytics must never block the existing dashboard totals or workflows.
+    api.get('/dashboard/finance-trends',{signal:controller.signal}).then(({data})=>{if(!controller.signal.aborted)setTrends(data);}).catch(()=>{}).finally(()=>{if(!controller.signal.aborted)setTrendsLoading(false);});
     try {
       const responses = await Promise.all(
         [
@@ -170,8 +169,9 @@ export default function Dashboard() {
     <div className="admin-dashboard" aria-busy={loading}>
       <section className="dashboard-hero">
         <div className="dashboard-hero-copy">
-          <h1>Dashboard</h1>
-          <p>Ringkasan operasional dan laporan hari ini.</p>
+          <span className="dashboard-eyebrow">Dashboard</span>
+          <h1>Ringkasan Operasional BIG Mobile</h1>
+          <p>Pantau kinerja, operasional, dan laporan harian secara real-time.</p>
           <button onClick={() => navigate("/admin/chat")}>
             <MessageCircle size={20} />
             Buka Kotak Masuk Chat
@@ -181,12 +181,15 @@ export default function Dashboard() {
         <BusinessClock />
         <img
           className="dashboard-hero-art"
-          src="/images/dashboard-operations.png"
+          src="/images/dashboard-operations-light.png"
           alt=""
         />
       </section>
       <div className="dashboard-finance-grid">
-        {FINANCE.map(([key, tone, label, Icon]) => (
+        {FINANCE.map(([key, tone, label, Icon]) => {
+          const metric=trends?.month===finance.month&&Number(trends?.metrics?.[key]?.current)===Number(finance[key])?trends.metrics[key]:null;
+          const comparison=metric?`Dibanding ${trends.previous_start} s.d. ${trends.previous_end} (WIB). Sebelumnya ${money.format(Number(metric.previous))}.${metric.baseline_zero&&metric.percentage===null?' Persentase tidak dihitung karena nilai pembanding nol.':''}`:'Data perbandingan belum tersedia.';
+          return (
           <section key={key} className={`dashboard-finance metric-${tone}`}>
             <span className="metric-icon">
               <Icon />
@@ -198,9 +201,10 @@ export default function Dashboard() {
               </p>
               <small>Periode {finance.month || "bulan berjalan"} · WIB</small>
             </div>
-            <Ornament />
+            <span className={`dashboard-change change-${metric?.direction?.toLowerCase()||'unavailable'}`} title={comparison} aria-label={`${label}: ${metric?.direction==='UP'?'naik':metric?.direction==='DOWN'?'turun':'perubahan'} ${metric?percentageLabel(metric):'belum tersedia'}. ${comparison}`} data-testid={`dashboard-change-${key}`}>{metric&&<span aria-hidden="true">{metric.direction==='UP'?'▲':metric.direction==='DOWN'?'▼':'•'}</span>}{trendsLoading?'…':percentageLabel(metric)}</span>
+            {metric&&Array.isArray(trends?.series)&&<TrendLine series={trends.series} metric={key} label={label}/>}
           </section>
-        ))}
+        );})}
       </div>
       <div className="dashboard-metrics" data-testid="dashboard-stats">
         {STATS.map(([key, tone, label, Icon]) => (
@@ -220,10 +224,7 @@ export default function Dashboard() {
       <div className="dashboard-bottom">
         <section className="dashboard-panel dashboard-activity">
           <div className="dashboard-panel-heading">
-            <h2>
-              <Zap />
-              Aktivitas Terbaru
-            </h2>
+            <div><h2><Zap />Aktivitas Terbaru</h2><p>Riwayat aktivitas operasional terbaru dalam sistem.</p></div>
             <button onClick={() => navigate("/admin/laporan")}>
               Lihat Semua
               <ArrowRight size={14} />
@@ -257,7 +258,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activity.map((a) => (
+                  {activity.slice(0,5).map((a) => (
                     <tr key={a.id}>
                       <td>{formatDateTime(a.waktu)}</td>
                       <td>{a.petugas}</td>
@@ -322,7 +323,7 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={chart}
-                    margin={{ left: -20, right: 8, top: 10, bottom: 0 }}
+                    margin={{ left: -20, right: 8, top: 28, bottom: 0 }}
                   >
                     <defs>
                       <linearGradient
@@ -348,6 +349,7 @@ export default function Dashboard() {
                       tickLine={false}
                     />
                     <YAxis
+                      domain={[0,maximum=>Math.max(4,Math.ceil(maximum))]}
                       allowDecimals={false}
                       tick={{ fontSize: 11, fill: "#45618c" }}
                       axisLine={false}
@@ -367,7 +369,8 @@ export default function Dashboard() {
                       radius={[7, 7, 0, 0]}
                       name="Laporan"
                       maxBarSize={54}
-                    />
+                      isAnimationActive={false}
+                    ><LabelList dataKey="count" content={<BarValue/>}/></Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
