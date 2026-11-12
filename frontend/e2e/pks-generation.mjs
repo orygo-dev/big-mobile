@@ -94,7 +94,7 @@ try {
           name: "Mitra Contoh",
           email: "mitra@example.com",
           petugas_code: "PTG-001",
-          nik: "6372041804860004",
+          nik: "1234567890123456",
           alamat: "Jalan Petugas, Banjarbaru",
           telepon: "081987654321",
           bank_name: "Bank Contoh",

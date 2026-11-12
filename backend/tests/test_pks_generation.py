@@ -8,7 +8,7 @@ from test_local_regressions import local_api,server,ADMIN,OFFICER,bearer
 import pks,pks_document
 
 COMPANY={'id':ADMIN['company_id'],'nama':'PT BERKAT INTIM GENERASI','alamat':'Jalan Perusahaan, Banjarbaru','telepon':'0812345678','email':'office@example.com','city':'Banjarbaru','director_name':'Direktur Contoh','director_position':'Direktur','director_signature':'PRIVATE-SIGNATURE','jwt_secret':'PRIVATE-SECRET'}
-PERSON={**OFFICER,'name':'Mitra Contoh','nik':'6372041804860004','alamat':'Jalan Petugas, Banjarbaru','telepon':'0819876543','bank_name':'Bank Contoh','bank_branch':'Banjarbaru','bank_account_number':'00123456789','bank_account_name':'Mitra Contoh','petugas_code':'PTG-001','password_hash':'PRIVATE-HASH'}
+PERSON={**OFFICER,'name':'Mitra Contoh','nik':'1234567890123456','alamat':'Jalan Petugas, Banjarbaru','telepon':'0819876543','bank_name':'Bank Contoh','bank_branch':'Banjarbaru','bank_account_number':'00123456789','bank_account_name':'Mitra Contoh','petugas_code':'PTG-001','password_hash':'PRIVATE-HASH'}
 
 def setup(db,monkeypatch):
     db.users.find_one.return_value=copy.deepcopy(PERSON)

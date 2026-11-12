@@ -864,7 +864,7 @@ def test_generated_pks_snapshot_concurrent_retry_signed_archive_and_delete(live)
     from pypdf import PdfReader,PdfWriter
     call,db=live['call'],live['db'];company=live['users']['admin']['company_id']
     db.companies.update_one({'id':company},{'$set':{'alamat':'Jalan QA Banjarbaru','telepon':'081234567890','city':'Banjarbaru','director_position':'Direktur'}})
-    officer=call('admin','POST','/petugas',json={'name':'Generated PKS QA','email':uuid.uuid4().hex+'@example.com','password':'Synthetic-password-123','nik':'6372041804860004','alamat':'Jalan Petugas QA','telepon':'081987654321','bank_name':'Bank QA','bank_branch':'Banjarbaru','bank_account_number':'00123456789','bank_account_name':'Generated PKS QA'}).json()
+    officer=call('admin','POST','/petugas',json={'name':'Generated PKS QA','email':uuid.uuid4().hex+'@example.com','password':'Synthetic-password-123','nik':'1234567890123456','alamat':'Jalan Petugas QA','telepon':'081987654321','bank_name':'Bank QA','bank_branch':'Banjarbaru','bank_account_number':'00123456789','bank_account_name':'Generated PKS QA'}).json()
     body={'officer_id':officer['id'],'duration':3,'unit':'TAHUN','submission_id':str(uuid.uuid4())}
     preview=call('owner','POST','/pks/preview',json={k:v for k,v in body.items() if k!='submission_id'})
     assert preview.headers['content-type']=='application/pdf'
@@ -906,7 +906,7 @@ def test_generated_pks_snapshot_concurrent_retry_signed_archive_and_delete(live)
 def test_generated_pks_audit_failure_rolls_back_number_and_document(live):
     call,db=live['call'],live['db'];company=live['users']['admin']['company_id']
     db.companies.update_one({'id':company},{'$set':{'alamat':'Jalan QA Banjarbaru','telepon':'081234567890','city':'Banjarbaru','director_position':'Direktur'}})
-    officer=call('admin','POST','/petugas',json={'name':'PKS Rollback QA','email':uuid.uuid4().hex+'@example.com','password':'Synthetic-password-123','nik':'6372041804860004','alamat':'Alamat QA','telepon':'0812345678','bank_name':'Bank QA','bank_account_number':'000123456789','bank_account_name':'PKS Rollback QA'}).json()
+    officer=call('admin','POST','/petugas',json={'name':'PKS Rollback QA','email':uuid.uuid4().hex+'@example.com','password':'Synthetic-password-123','nik':'1234567890123456','alamat':'Alamat QA','telepon':'0812345678','bank_name':'Bank QA','bank_account_number':'000123456789','bank_account_name':'PKS Rollback QA'}).json()
     before=list(db.counters.find({}))
     db.block_writes('audit_logs',True)
     try:
